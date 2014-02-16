@@ -1,0 +1,6 @@
+  \margins{.3in}{.3in}{.3in}{.3in}
+  \screensize{3.75in}{4.8in}
+  %\overlay{overlay1.pdf}
+  \overlay{myov4.pdf}
+  \setlength{\parindent}{0pt}
+  \raggedright
