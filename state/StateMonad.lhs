@@ -3,6 +3,10 @@
 %include lhs2TeX.sty
 %format <-- = "\boldmath{${\leftarrow}$}"
 %format <- = "\char''30"
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\usepackage{ragged2e}
+\usepackage[parfill]{parskip}
 \usepackage{pgf}
 \usepackage{tikz}
 \usepackage[utf8]{inputenc}
@@ -31,14 +35,22 @@
 The type we are dealing with is the following:
 
 \begin{code}
+import Control.Monad.State
 newtype State s a = State { runState :: s -> (a, s) }
 \end{code}
 
-\subsection{Record syntax}
+To understand this type we need to understand
 
-To get a feeling for what this |State| type means, we will construct
-such a type ourselves. First we need to understand the record syntax used
-here.
+\begin{itemize}
+\item The |newtype| and |data| keywords
+\item Record syntax
+\item Wrapped functions
+\end{itemize}
+
+I will not go into |newtype| and |data|, but I will explore the other
+two topics.
+
+\subsection{Record syntax}
 
 Record syntax allows to define a tuple together with access functions
 to retrieve specific components of the tuple. To understand the
@@ -54,7 +66,12 @@ name of the component.
 \begin{code}
 
 type PairTuple = (Int, String)
+
+-- access functions:
+fooTuple :: PairTuple -> Int
 fooTuple (foo,_) = foo
+
+barTuple :: PairTuple -> String
 barTuple (_,bar) = bar
 \end{code}
 
@@ -62,16 +79,16 @@ If we want to modify one of the components, we need additional
 functions like
 
 \begin{code}
-modFooTuple::Int->PairTuple->PairTuple
+modFooTuple::Int -> PairTuple -> PairTuple
 modFooTuple foo (_, bar) = (foo, bar)
 
-modBarTuple::String->PairTuple->PairTuple
+modBarTuple::String -> PairTuple -> PairTuple
 modBarTuple bar (foo,_) = (foo, bar)
 \end{code}
 
 
 As an exercise let's create a Pair and then modify each of the
-components and retrieve the bar compnent
+components and finally retrieve the bar compnent
 
 \begin{code}
 ex1 = barTuple $ (modBarTuple "changed") $ (modFooTuple 2) $ (1,"init")
@@ -89,7 +106,8 @@ It seems unneccessary to define these four functions, because all the
 system needs to know is the types and names of the components. This is
 where record syntax comes in. We cannot get away with a simple |type|
 synonym anymore, but must define a new type, e.g. using the |data|
-keyword.
+keyword. We cannot use |newtype| because the constructor has more than
+one field.
 
 \begin{code}
 data PairRecord = PR {foo::Int, bar::String} deriving (Eq,Show)
@@ -132,14 +150,14 @@ PR {foo = 1, bar = "changed"}
 where an \emph{update} is of course not a real update, but the
 construction of a new PairRecord with one or more components changed.
 
-\subsection{A type with a function}
+\subsection{A type which wraps a function}
 
 The |State| type however, does not consist of simple types like |Int|
 and |String| but wraps around a function. To get a feeling of what
 this does, let's again create such a Type ourselves.
 
 \begin{code}
-data FuncRecord = FR{run :: Int->Int}
+data FuncRecord = FR{run :: Int -> Int}
 \end{code}
 
 To create such a record we must pass a function into the data
@@ -182,8 +200,11 @@ spefic to the \emph{type constructors} only.
 
 This kind of abstraction is very common in Haskell. E.g. the |reverse|
 operation on Lists works on Lists of any types. It knows nothing about
-the type of elements in the List. This is the way it should be: "A
-function which inverses a list of bananas knows nothing about bananas"
+the type of elements in the List. This is the way it should be: 
+
+\begin{quote}
+\emph{A function which reverses a list of bananas knows nothing about bananas}
+\end{quote}
 
 However, Mondads are not about reversing, but about chaining. It is a
 good idea to know the type of the bind operator |>>=| by heart.
@@ -204,12 +225,14 @@ one of them is overwhelmingly more useful than the others.
 
 Let's try to roll our own monad from our |FuncRecord| from above. We
 must change a number of things. First a monad needs a type variable
-(the \emph{of something else}). So instead of functions from Int to
-Int, we use functions from Int to some type |a|. Then we must rename a
-number of things, to avoid name clashes with our |FuncRecord|
+(the \emph{of something else}, i.e. the bananas). So instead of
+functions from Int to Int, we use functions from Int to some type |a|.
+
+Then we must rename a number of things, to avoid name clashes with our
+|FuncRecord|
 
 \begin{code}
-data FuncRecordMonad a = FRM{runm :: Int->a}
+data FuncRecordMonad a = FRM{runm :: Int -> a}
 
 -- some examples:
 frmInc = FRM (\x -> x+1)
@@ -236,7 +259,7 @@ its input, somthing like $return\, x = FRM (\lambda \_ \rightarrow x)$
 \bigskip
 
 \begin{tikzpicture}
- \node[state, label=above:|a -> FRM a|] (g) {};
+ \node[state, label=above:|a -> FuncRecordMonad a|] (g) {};
  \draw [thick, -*] (g.east) ++(0,0.0)   node [xshift=-5pt]  {a} -- +(0.5,0)  node (gout) {};
  \draw [thick, -*] (g.west) ++(0,-0.0)  node [xshift=8pt]   {Int} -- +(-0.5,0) node (gain) {};
  \draw [thick, -*] (g.south) ++(0,-0.0) node [yshift=5pt]   {a} -- +(0,-0.5) node (gin2) {};
@@ -254,11 +277,11 @@ sense?
 \bigskip
 
 \begin{tikzpicture}
- \node[state, label=above:|FRM a|] (f) {};
+ \node[state, label=above:|FuncRecordMonad a|] (f) {};
  \draw [thick, -*] (f.east) ++(0, 0.0) node [xshift=-5pt]  {a} -- +(0.5,0)  node (fout) {};
  \draw [thick, -*] (f.west) ++(0,-0.0) node [xshift=8pt]   {Int} -- +(-0.5,0) node (fin) {};
 
- \node[state, right of=f, xshift=2cm, label=above:|a -> FRM b|] (g) {};
+ \node[state, right of=f, xshift=2cm, label=above:|a -> FuncRecordMonad b|] (g) {};
  \draw [thick, -*] (g.east) ++(0,0.0)   node [xshift=-5pt]  {b} -- +(0.5,0)  node (gout) {};
  \draw [thick, -*] (g.west) ++(0,-0.0)  node [xshift=8pt]   {Int} -- +(-0.5,0) node (gain) {};
  \draw [thick, -*] (g.south) ++(0,-0.0) node [yshift=5pt]   {a} -- +(0,-0.5) node (gin2) {};
@@ -267,7 +290,7 @@ sense?
 
 
 
-To implement |(>>=)| we must combine these into a single
+To implement |(>>=)| we must combine these into a single (wrapped)
 function. There aren't too many options. Remember that
 
 \begin{verbatim}
@@ -283,11 +306,11 @@ is to take the return value from the first |FRM|.
 \bigskip
 
 \begin{tikzpicture} 
-\node[state, label=above:|f:: FRM a|] (f) {}; 
+\node[state, label=above:|f:: FuncRecordMonad a|] (f) {}; 
 \draw [thick,-*] (f.east) ++(0, 0.0) node [xshift=-5pt] {a}   --+(0.5,0) node (fout){}; 
 \draw [thick, -*] (f.west) ++(0,-0.0) node [xshift=8pt] {Int} --+(-0.5,0) node (fin) {};
 
- \node[state, right of=f, xshift=2cm, label=above:|g:: a -> FRM b|] (g) {};
+ \node[state, right of=f, xshift=3cm, label=above:|g:: a -> FuncRecordMonad b|] (g) {};
  \draw [thick, -*] (g.east) ++(0,0.0)   node [xshift=-5pt]  {b} -- +(0.5,0)  node (gout) {};
  \draw [thick, -*] (g.west) ++(0,-0.0)  node [xshift=8pt]   {Int} -- +(-0.5,0) node (gain) {};
  \draw [thick, -*] (g.south) ++(0,-0.0) node [yshift=5pt]   {a} -- +(0,-0.5) node (gin2) {};
@@ -306,11 +329,11 @@ to the second function.
 \bigskip
 
 \begin{tikzpicture} 
-\node[state, label=above:|f:: FRM a|] (f) {}; 
+\node[state, label=above:|f:: FuncRecordMonad a|] (f) {}; 
 \draw [thick,-*] (f.east) ++(0, 0.0) node [xshift=-5pt] {a}   --+(0.5,0) node (fout){}; 
 \draw [thick, -*] (f.west) ++(0,-0.0) node [xshift=8pt] {Int} --+(-0.5,0) node (fin) {};
 
- \node[state, right of=f, xshift=2cm, label=above:|g:: a -> FRM b|] (g) {};
+ \node[state, right of=f, xshift=3cm, label=above:|g:: a -> FuncRecordMonad b|] (g) {};
  \draw [thick, -*] (g.east) ++(0,0.0)   node [xshift=-5pt]  {b}   -- +(0.5,0)  node (gout) {};
  \draw [thick, -*] (g.west) ++(0,-0.0)  node [xshift=8pt]   {Int} -- +(-0.5,0) node (gin) {};
  \draw [thick, -*] (g.south) ++(0,-0.0) node [yshift=5pt]   {a}   -- +(0,-0.5) node (gin2) {};
@@ -319,13 +342,13 @@ to the second function.
  \path [draw, thick, ->] (fin) edge[out=90, in=135, in distance=3cm] node[above]{|x|} (gin) ;    
 \end{tikzpicture}
 
-The result indeed has the type |M b|, i.e. |FRM b|, a function from
-|Int| to |b|. To write this in proper Haskell, we first apply |f| to
-|x| by means of |(runm f) x)|. This gives us some value of type
-|a|. We pass this value to |g| which gives us another |FRM b|. Finally
-we apply this new function to the same |x| and get a value of type
-|b|. So we have constructed a new function |f2| from |f| and |g| and
-the only thing left to do, is to wrap in inside |FRM|.
+The result indeed has the type |M b|, i.e. |FuncRecordMonad b|, a
+function from |Int| to |b|. To write this in proper Haskell, we first
+apply |f| to |x| by means of |(runm f) x)|. This gives us some value
+of type |a|. We pass this value to |g| which gives us another |FRM
+b|. Finally we apply this new function to the same |x| and get a value
+of type |b|. So we have constructed a new function |f2| from |f| and
+|g| and the only thing left to do, is to wrap in inside |FRM|.
 
 \begin{code}
 instance Monad FuncRecordMonad where
@@ -336,7 +359,7 @@ instance Monad FuncRecordMonad where
 \end{code}
 
 
-\subsubsection{Doing}
+\subsubsection{Chaining}
 
 We designed our monad with no specific purpose in mind. But let's
 explore what it does anyways.
@@ -347,38 +370,40 @@ value To actually run this function we must unwrap it with |runm|.
 \begin{code}
 f2 = runm frm
         where
-            frm = return "42"
+            frm = return ".org"
 \end{code}
 
 \begin{verbatim}
 *Main> :t f2
 f2 :: Int -> [Char]
 *Main> f2 1
-"42"
+".org"
 *Main> f2 2
-"42"
+".org"
 \end{verbatim}
 
 Now let's try the chaining. We must invent that second function |g ::
-a -> FRM b|, where the b-typed value inside |FRM| is a function from
-|Int| to some type |b|. 
+a -> FuncRecordMonad b|, where the b-typed value inside |FRM| is a
+function from |Int| to some type |b|.
 
 
 \begin{code}
 f3 = runm frm
         where
-            frm = return "42" >>= \a -> FRM (\x -> (show x) ++ a) 
+            frm = return ".org" >>= \a -> FRM (\x -> (show x) ++ a) 
 \end{code}
 
-So this function returns its agument suffixed by the String |42|.
+So this function converts its |Int| argument to a String and appends ".org".
 
 
 \begin{verbatim}
 *Main> f3 1
-"142"
+"1.org"
 *Main> f3 99
-"9942"
+"99.org"
 \end{verbatim}
+
+\subsubsection{Doing}
 
 Now, let's try to rewrite |f3| using do-notation. First, let's try to
 get rid of the value constructor |FRM| by using |return|. Furthermore
@@ -388,25 +413,25 @@ let's not unwrap right away, using |runm| but return a
 
 \begin{code}
 
-f3a x = return "42" >>= \a -> return ((show x) ++ a) 
+f3a x = return ".org" >>= \a -> return ((show x) ++ a) 
 
 -- This translates to do-notation
 f3b x = do
-    a <- (return "42") :: FuncRecordMonad String
+    a <- (return ".org") :: FuncRecordMonad String
     return ((show x) ++ a) 
 \end{code}
 
-The type of |f3b| is now \eval{:t f3b}. If we pass it one parameter,
+The type of |f3b| is now \eval{:t f3b}. If we pass it one argument,
 we get \eval{:t f3b 99} from which we can extract the function
 \eval{:t (runm (f3a 99))} and when we finally call this function we get:
 
 \begin{verbatim}
 *Main> (runm (f3b 99)) 666
-"9942"
+"99.org"
 \end{verbatim}
 
 Note that the final argument 666 is actually ignored. The result only
-depends on |x=99|, the parameter we passed first to f3b. Let's try to
+depends on |x=99|, the argument we passed first to f3b. Let's try to
 construct a more intelligent |FuncRecordMonad|, one which transforms
 an existing |FuncRecordMonad|.
 
@@ -420,7 +445,7 @@ f4 frm = do
 
 
 |f4| takes some wrapped |Int -> String| function and returns a
-function, which adds the length of the String to its |Int| parameter.
+function, which adds the length of the String to its |Int| argument.
 
 
 \begin{tikzpicture} 

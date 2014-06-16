@@ -12,6 +12,7 @@
 \usepackage{enumitem}
 \usepackage{comment}
 \usepackage{fancyhdr}
+\pagestyle{headings}
 \usepackage{needspace}
 \usepackage{graphicx}
 \usepackage{capt-of}

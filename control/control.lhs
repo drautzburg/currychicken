@@ -464,6 +464,12 @@ data Timed a = Timed {
   next       :: Time -> Maybe Time
 }
 
+\end{code}
+
+With these functions we can write a |between| function, which gives us
+all the values between to points in time.
+
+\begin{code}
 between :: Int -> Int -> Timed a -> [a]
 between t1 t2 timed = (at timed) t1 : rest
         where
@@ -475,6 +481,9 @@ between t1 t2 timed = (at timed) t1 : rest
 
 
 \end{code}
+
+
+\subsection{Details}
 
 A sample implementation of |Time| is a simple List
 
@@ -489,7 +498,7 @@ timedFromList def xs = Timed {
                                        [] -> def
                                        xs -> snd $ last foo,
 
-             next       = \t -> let foo = dropWhile (\(tx,vx) -> tx < t) xs
+             next       = \t -> let foo = dropWhile (\(tx,vx) -> tx <= t) xs
                                 in case foo of
                                        [] -> Nothing
                                        xs -> Just (fst $ head foo)
@@ -502,16 +511,33 @@ exampleTimed = timedFromList "default" [(1,"one"),(5,"five"), (12,"twelve")]
 |*Main> at exampleTimed 0|\\
   \eval{at exampleTimed 0}
 
-|*Main> at exampleTimed 1|\\
-  \eval{at exampleTimed 1}
-
 |*Main> at exampleTimed 10|\\
   \eval{at exampleTimed 10}
 
 |*Main> at exampleTimed 100|\\
   \eval{at exampleTimed 100}
 
+|*Main> next exampleTimed 10|\\
+  \eval{next exampleTimed 10}
+
+|*Main> between 0 10 exampleTimed|\\
+  \eval{between 0 10 exampleTimed}
+
 \end{run}
+
+\section {A Timed Resouce Pool}
+
+The most interesting operaition on a timed Resource Pool is the
+allocation of a resource for a specific time interval (a period). This
+operation will "lower" the pool for the period of allocation. Since
+the Pool may not be constant throughout the period, the "lowering" may
+affect several changes withing the perdiod of allocation.
+
+At the end of the period the pool resumes the state it would have had
+without the allocation.
+
+
+
 
 
 \end{document}
