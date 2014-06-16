@@ -3,7 +3,6 @@
 %include greek.fmt
 %options ghci -fglasgow-exts
 
-
 \usepackage{fancyhdr}
 \usepackage{needspace}
 \usepackage{amsmath}
@@ -14,6 +13,9 @@
 \usepackage{ctable}
 \usepackage{color}
 \usepackage{colortbl}	
+\usepackage{pgf}
+\usepackage[framemethod=tikz]{mdframed}
+\newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
 
 \hyphenpenalty=750
 
@@ -71,8 +73,6 @@ So we have
 Furthermore a resource is described by "what it can do". Many
 resources (particularly people) are able to several things. So the
 capabilities of a resource is desctribed by a |Skill-set|.
-
-
 
 
 % ------------------------------------------------------------
@@ -439,7 +439,7 @@ time.
 
 We shall assume, that a Pool changes only at discrete moments in time
 and remains constant between changes. For any point in time, we will
-be interested in the latest change before that momen, because this is
+be interested in the latest change before that moment, because this is
 the current value with respect to this point in time. Additionally we
 are interested in the moment where the next change occurs, because
 this sets the endpoint for the current value.
@@ -455,33 +455,63 @@ constant for all times (after a certaint point in time)
 
 \begin{code}
 type Time = Int
-type Next = Maybe Time
+type Next = Time
 
-class Timed a where
-  defaultVal :: a
-  at         :: Time -> a -> (Next, a)
-  
-  between    :: Time -> Time -> a -> (Next, [a])
-  between from to timed = between' from to timed (Nothing, [])
-                          where
-                            between' f t td (nxt,ts)
-                              | f >= t    = (nxt, ts)
-                              | otherwise =
-                                case (at from timed) of
-                                  (Just t, td)  -> between' t to timed (Just t, td:ts)
-                                  (Nothing, td) -> (Nothing, td:ts)
+
+data Timed a = Timed {
+  defaultVal :: a,
+  at         :: Time -> a,
+  next       :: Time -> Maybe Time
+}
+
+between :: Int -> Int -> Timed a -> [a]
+between t1 t2 timed = (at timed) t1 : rest
+        where
+            rest       = case (next timed) t1 of
+                             (Just tx) -> if tx < t2
+                                          then between tx t2 timed
+                                          else []
+                             Nothing -> []
+
+
 \end{code}
 
-A sample implementation of |Time| is a simple List, where each element
-is a pair of |Time| and a value.
+A sample implementation of |Time| is a simple List
 
 \begin{code}
-data TimedList a = Tl [(Time,a)]
 
-instance Timed (TimedList a) where
---  at t (Tl xs)  = undefined
-  at (Tl xs) t = [(t1,t2)| 
-      sorted = L.sortBy (compare `on` fst) xs
+timedFromList :: a -> [(Time,a)] -> Timed a
+timedFromList def xs = Timed {
+             defaultVal = def,
+
+             at         = \t -> let foo = takeWhile (\(tx,vx) -> tx <= t) xs
+                                in case foo of
+                                       [] -> def
+                                       xs -> snd $ last foo,
+
+             next       = \t -> let foo = dropWhile (\(tx,vx) -> tx < t) xs
+                                in case foo of
+                                       [] -> Nothing
+                                       xs -> Just (fst $ head foo)
+                       }
+
+exampleTimed = timedFromList "default" [(1,"one"),(5,"five"), (12,"twelve")]
 \end{code}
+
+\begin{run}
+|*Main> at exampleTimed 0|\\
+  \eval{at exampleTimed 0}
+
+|*Main> at exampleTimed 1|\\
+  \eval{at exampleTimed 1}
+
+|*Main> at exampleTimed 10|\\
+  \eval{at exampleTimed 10}
+
+|*Main> at exampleTimed 100|\\
+  \eval{at exampleTimed 100}
+
+\end{run}
+
 
 \end{document}
