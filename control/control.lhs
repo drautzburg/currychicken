@@ -30,6 +30,8 @@
 \pagestyle{fancy}
 \RaggedRight
 
+\tableofcontents
+
 % ------------------------------------------------------------
 \section{Resources}
 % ------------------------------------------------------------
@@ -74,19 +76,22 @@ capabilities of a resource is desctribed by a |Skill-set|.
 
 
 % ------------------------------------------------------------
-\subsection{Resouce Definition}
-
-Before we get to defining Resources and Requests, we must firs define a Skill-Set
+\subsection{Introduction}
+\subsubsection{Skill Sets}
+Before we get to defining Resources and Requests, we must first define a Skill-Set
 
 \begin{code}
 import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Text.Show.Pretty as Pr
 import Data.Ord
+import Data.Function(on)
 
 data SkillSet = Skills (S.Set String) deriving Show
 includesSkills (Skills a) (Skills b) = b `S.isSubsetOf` a
 \end{code}
+
+\subsubsection{Resources}
 
 We define two types of Resources
 \begin{description}
@@ -103,19 +108,40 @@ data Resource  = Ers String SkillSet | Qrs Int SkillSet | NoResource
 
 \end{code}
 
-% ------------------------------------------------------------
-\subsection{Request Definition}
+\subsubsection{Resource Requests}
 
 Requests are very similar to Resources. In fact they are "Resources
-you want to have".
+you want to have". They also come in two flavours, namely enumberable
+and quantifiable.
 
 \begin{code}
 data Request   = Erq String SkillSet | Qrq Int SkillSet | NoRequest
                deriving (Show)
 \end{code}
 
+\subsubsection{Operations}
+
+The main operation we want to perform on Resources and Request is to
+test whether a Resource satisfies a Request. In case it does, either
+the available amount of the Resource gets reduced (in cases of a quantifiable
+QuanResource), or the Resouce if fully consumed, i.e. replaced by
+|NoResource|. Also we would like to know whether the Request was fully
+satisfied or parially or not at all. We shall therefor return the
+\emph{remaining} Request, which is |NoRequest| in cases when the
+Request was fully satisfied.
+
+Resources and Requests don't have to be of the same flavour. It is
+well possible to satisfy an |Erq| with a |Qrs| or a |Qrq| with an
+|Ers|. Which Resource gets chosen is a mater of how we pick Resouces
+frm a |Pool|. But here we're only dealing with a single Resouce and a
+singe Request.
+
+\begin{code}
+satisfy :: Resource -> Request -> (Resource, Request)
+\end{code}
+
 % ------------------------------------------------------------
-\subsection{Operations with Resources and Requests}
+\subsection{Details}
 
 Since both Requests and Resources know about Skills, we want
 operations which answer whether a resouce satisfies the Skill-demand
@@ -125,6 +151,8 @@ about Skills".
 \begin{code}
 class Skilled a where
   skills     :: a -> SkillSet
+
+  -- compare two |Skilled|
   satisfies  :: (Skilled b) => a -> b -> Bool
   satisfies  a b =  (skills a)  `includesSkills` (skills b)
 \end{code}
@@ -222,6 +250,9 @@ satisfy resource request
 \section{Pools}
 % ------------------------------------------------------------
 
+\subsection{Introduction}
+\subsubsection{ResoucePool}
+
 The operations above only operate on a single Resouce and a single
 Request. In the real world we typically want to satisfy a Request from
 a |ResourcePool|.
@@ -230,10 +261,12 @@ a |ResourcePool|.
 type ResourcePool = [Resource]
 \end{code}
 
+\subsubsection{Satisfying Requests from Pool}
+
 The Pool will contain both enumerable and quantifiable resouces and
 there may be candidates of both types for satisfiying a
 Request. Furthermore there may be resources which are
-"overqwualified", i.e. they can do more things than we asked for. To
+"overqualified", i.e. they can do more things than we asked for. To
 satisfy a request we must order our Resources in a particular way, so
 we allocate the cheapest resources.
 
@@ -256,23 +289,38 @@ and avoid overqualified resources.
 
 \end{itemize}
 
-So we need a number of sorting strategies. In fact all we need is a
-number of comparison operators.
+So we need a way to satisfy a Request from a Pool and we need a way to
+sort the Pool beforhand, such that the request is no satisfied by a
+needlessly valueable Resource. The satisfy function follows the same
+pattern as above: it returns the remaining Pool along with the
+remaining (unsatisfied) Request.
 
 \begin{code}
-type ResourceComparison = Resource -> Resource -> Ordering
+poolSatisfy :: ResourcePool -> Request -> (ResourcePool, Request)
 
--- $Qrs < Ers$
-rsTypeOrder :: ResourceComparison
-rsTypeOrder r1@(Qrs _ _) r2@(Qrs _ _) = EQ
-rsTypeOrder r1@(Ers _ _) r2@(Ers _ _) = EQ
-rsTypeOrder r1@(Qrs _ _) r2@(Ers _ _) = LT
-rsTypeOrder r1@(Ers _ _) r2@(Qrs _ _) = GT
+-- comparison operations used to sort the Pool:
+
+type ResourceComparison = Resource -> Resource -> Ordering
+enumFirst :: ResourceComparison
+quanFirst :: ResourceComparison
+\end{code}
+
+\subsection{Details}
+
+To sort the Pool we need a number of comparison operations.
+
+\begin{code}
+-- treat quantifiable resouces as "less" than enumerable
+smallQrs :: ResourceComparison
+smallQrs (Qrs _ _) (Qrs _ _) = EQ
+smallQrs (Ers _ _) (Ers _ _) = EQ
+smallQrs (Qrs _ _) (Ers _ _) = LT
+smallQrs (Ers _ _) (Qrs _ _) = GT
 \end{code}
 
 To sort by "skill value" we need to associate a value with a
 skill-set. For now we will just count the skills, such that resources
-with fewer skills will be considered first.
+with fewer skills will be considered cheaper.
 
 \begin{code}
 rsSkillOrder :: ResourceComparison
@@ -292,6 +340,7 @@ multiple cmp2 cmp1 a b
   | cmp1 a b == EQ  = cmp2 a b
   | otherwise       = cmp1 a b
 
+-- reverse the ordering
 down :: ResourceComparison -> ResourceComparison
 down cmp a b = case cmp a b of
   LT -> GT
@@ -302,17 +351,16 @@ down cmp a b = case cmp a b of
 and the two required ordering function are
 
 \begin{code}
-enumFirst = multiple rsSkillOrder (down rsTypeOrder)
-quanFirst = multiple rsSkillOrder rsTypeOrder
+enumFirst = multiple rsSkillOrder (down smallQrs)
+quanFirst = multiple rsSkillOrder smallQrs
 \end{code}
 
 Satifying a request from a Pool is now a matter of properly sorting
 the Pool and doing a little List processing. Unfortunately the order
 of parameters in our function does not work well with |MapAccumL|, so
-we need to doe some swapping and flipping.
+we need to do some swapping and flipping.
 
 \begin{code}
-poolSatisfy :: ResourcePool -> Request -> (ResourcePool, Request)
 poolSatisfy pool req = swap $ L.mapAccumL satisfy' req sortedPool
   where
     swap (x,y) = (y,x)
@@ -376,6 +424,64 @@ examplePool = [
   ers "Irv1"        ["runProg200"],
   ers "Irv2"        ["runProg201"]
   ]
+\end{code}
+
+% ------------------------------------------------------------
+\section{Timed Things}
+% ------------------------------------------------------------
+
+\subsection{Introduction}
+
+In the real world, a |ResourcePool| will change over time. The
+available resouces will not be the same at any point in time, and
+satisfied |ResouceRequest|s with additionally create fluctuations over
+time.
+
+We shall assume, that a Pool changes only at discrete moments in time
+and remains constant between changes. For any point in time, we will
+be interested in the latest change before that momen, because this is
+the current value with respect to this point in time. Additionally we
+are interested in the moment where the next change occurs, because
+this sets the endpoint for the current value.
+
+We must assume that |Timed| things always have a value. If we
+implement Timed things as a list of changes, we must be prepared for
+answering the value before the first change. Hence we need some sort
+of default value.
+
+As for the moment of the next change, we must be preparted to handle
+the situation, where there is no next change, i.e. a value remains
+constant for all times (after a certaint point in time)
+
+\begin{code}
+type Time = Int
+type Next = Maybe Time
+
+class Timed a where
+  defaultVal :: a
+  at         :: Time -> a -> (Next, a)
+  
+  between    :: Time -> Time -> a -> (Next, [a])
+  between from to timed = between' from to timed (Nothing, [])
+                          where
+                            between' f t td (nxt,ts)
+                              | f >= t    = (nxt, ts)
+                              | otherwise =
+                                case (at from timed) of
+                                  (Just t, td)  -> between' t to timed (Just t, td:ts)
+                                  (Nothing, td) -> (Nothing, td:ts)
+\end{code}
+
+A sample implementation of |Time| is a simple List, where each element
+is a pair of |Time| and a value.
+
+\begin{code}
+data TimedList a = Tl [(Time,a)]
+
+instance Timed (TimedList a) where
+--  at t (Tl xs)  = undefined
+  at (Tl xs) t = [(t1,t2)| 
+      sorted = L.sortBy (compare `on` fst) xs
 \end{code}
 
 \end{document}
