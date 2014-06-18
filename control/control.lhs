@@ -142,7 +142,10 @@ Resouce Pools.
 
 
 \begin{code}
-type Allocation = (Request, Resource)
+type LeftRequest  = Request
+type LeftResource = Resource
+type ApprResource  = Resource
+type Allocation = (LeftRequest, LeftResource, ApprResource)
 allocate :: Resource -> Request -> Allocation
 \end{code}
 
@@ -240,12 +243,11 @@ request and the grantedResouce.
 
 \begin{code}
 allocate resource request
-  | resource `hasSkills` request  = (remRequest, grantedResource)
-  | otherwise = (request, NoResource)
+  | resource `hasSkills` request  = (leftRequest, leftResource, apprResource)
   where
-    -- remResource  = resource `minus` common
-    remRequest      = request  `minus` common
-    grantedResource = resource `minus` granted
+    leftResource    = resource `minus` common
+    leftRequest     = request  `minus` common
+    apprResource    = resource `minus` granted
     common          = cmin resource request
     granted         = count resource - common
 \end{code}
@@ -331,7 +333,7 @@ rsSkillOrder :: ResourceComparison
 rsSkillOrder r1 r2 = let (Skills s1) = skills r1
                          (Skills s2) = skills r2
                      in
-                      compare (S.size s1) (S.size s2)
+<                      compare (S.size s1) (S.size s2)
 \end{code}
 
 Now if we want so sort by multiple criteria, we need to combine
@@ -377,10 +379,11 @@ xxx erq allocate erq even if the name doesn't match!
 poolAllocate :: [Resource] -> Request -> (Request, [Resource])
 poolAllocate pool req = foldl alloc (req,[]) sortedPool
   where
-    alloc (req,grants) resource = let (remReq, grant) = allocate resource req
-                                  in  case grant of
-                                    NoResource -> (remReq,grants)
-                                    _          -> (remReq, grant:grants)
+    alloc :: (Request, [ApprResource]) -> Resource -> (Request, [ApprResource])
+    alloc (req,grants) resource = let (leftReq, leftRes, apprRes) = allocate resource req
+                                  in  case apprRes of
+                                    NoResource -> (leftReq, grants)
+                                    _          -> (leftReq, apprRes:grants)
     sortedPool = case req of
       (Qrq _ _) -> L.sortBy quanFirst pool
       (Erq _ _) -> L.sortBy enumFirst pool
