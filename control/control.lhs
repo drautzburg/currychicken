@@ -122,22 +122,31 @@ data Request   = Erq String SkillSet | Qrq Int SkillSet | NoRequest
 \subsubsection{Operations}
 
 The main operation we want to perform on Resources and Request is to
-test whether a Resource satisfies a Request. In case it does, either
-the available amount of the Resource gets reduced (in cases of a quantifiable
-QuanResource), or the Resouce if fully consumed, i.e. replaced by
-|NoResource|. Also we would like to know whether the Request was fully
-satisfied or parially or not at all. We shall therefor return the
-\emph{remaining} Request, which is |NoRequest| in cases when the
-Request was fully satisfied.
+allocate a Resouce to satisfy a Request.
 
 Resources and Requests don't have to be of the same flavour. It is
 well possible to satisfy an |Erq| with a |Qrs| or a |Qrq| with an
 |Ers|. Which Resource gets chosen is a mater of how we pick Resouces
 frm a |Pool|. But here we're only dealing with a single Resouce and a
-singe Request.
+singe Request. 
+
+We would like to know whether the Request was fully satisfied or
+parially or not at all. We shall therefor return the \emph{remaining}
+Request, which is |NoRequest| in cases when the Request was fully
+satisfied.
+
+We also like to know whether or how much of a Resouce was granted to
+satisfy the Request. However, we are not terribly interested how much
+of the Resouce remains. This gets more interesting when we deal with
+Resouce Pools.
+
 
 \begin{code}
-satisfy :: Resource -> Request -> (Resource, Request)
+type LeftRequest  = Request
+type LeftResource = Resource
+type ApprResource  = Resource
+type Allocation = (LeftRequest, LeftResource, ApprResource)
+allocate :: Resource -> Request -> Allocation
 \end{code}
 
 % ------------------------------------------------------------
@@ -153,12 +162,12 @@ class Skilled a where
   skills     :: a -> SkillSet
 
   -- compare two |Skilled|
-  satisfies  :: (Skilled b) => a -> b -> Bool
-  satisfies  a b =  (skills a)  `includesSkills` (skills b)
+  hasSkills  :: (Skilled b) => a -> b -> Bool
+  hasSkills  a b =  (skills a)  `includesSkills` (skills b)
 \end{code}
 
 Resources and Request should now be instances of that class. If we
-implement the |skills| function, we get |satisfies| for free.
+implement the |skills| function, we get |hasSkills| for free.
 
 \begin{code}
 instance Skilled Resource where
@@ -191,28 +200,28 @@ And make Resources and Requests instances of that class
 
 \begin{code}
 instance Countable Resource where
-  count NoResource       = 0
-  count (Ers _ _)        = 1
-  count (Qrs c _)        = c
+  count NoResource        = 0
+  count (Ers _ _)         = 1
+  count (Qrs c _)         = c
   
-  minus res 0            = res
-  minus rs@(Ers _ _) 1   = NoResource
+  minus rs 0              = rs
+  minus rs@(Ers _ _) 1    = NoResource
   minus (Qrs c s) n
-        | c > n          = Qrs (c-n) s
-        | c == n         = NoResource
+        | c > n           = Qrs (c-n) s
+        | c == n          = NoResource
 \end{code}
 
 \begin{code}
 instance Countable Request where
-  count NoRequest        = 0
-  count (Erq _ _)        = 1
-  count (Qrq c _)        = c
+  count NoRequest         = 0
+  count (Erq _ _)         = 1
+  count (Qrq c _)         = c
   
-  minus req 0            = req
-  minus rq@(Erq _ _) 1   = NoRequest
+  minus rq 0              = rq
+  minus rq@(Erq _ _) 1    = NoRequest
   minus (Qrq c s) n
-        | c > n          = Qrq (c-n) s
-        | c == n         = NoRequest
+        | c > n           = Qrq (c-n) s
+        | c == n          = NoRequest
 \end{code}
 
 This allows us to do algebra on the "count" property of qunatifiable
@@ -226,26 +235,22 @@ instance Countable Int where
   minus x y  = x - y
 \end{code}
 
-After these preparational steps it becomes very easy to define a
-|satisfy| operation, which takes a Resource (af any kind) and a
-Request (of any kind) and returns the remaining resource and the
-remaining (unsatisfied) request.
+After these preparational steps it becomes very easy to define an
+|allocate| operation, which takes a Resource (af any kind) and a
+Request (of any kind) and returns allocation made, i.e the remaining
+request and the grantedResouce.
+
 
 \begin{code}
-satisfy NoResource rq = (NoResource, rq)
-satisfy res NoRequest = (res, NoRequest)
-
-satisfy rs@(Ers rsName rsSkills) rq@(Erq rqName  rqSkills)
-  | rsName == rqName  = (NoResource, NoRequest)
-  | otherwise         = (rs, rq)
-
-satisfy resource request
-  | resource `satisfies` request  = (resource `minus` x, request `minus` x)
-  | otherwise                     = (resource, request)
+allocate resource request
+  | resource `hasSkills` request  = (leftRequest, leftResource, apprResource)
   where
-    x = cmin resource request
+    leftResource    = resource `minus` common
+    leftRequest     = request  `minus` common
+    apprResource    = resource `minus` granted
+    common          = cmin resource request
+    granted         = count resource - common
 \end{code}
-
 % ------------------------------------------------------------
 \section{Pools}
 % ------------------------------------------------------------
@@ -296,7 +301,7 @@ pattern as above: it returns the remaining Pool along with the
 remaining (unsatisfied) Request.
 
 \begin{code}
-poolSatisfy :: ResourcePool -> Request -> (ResourcePool, Request)
+--xxpoolSatisfy :: ResourcePool -> Request -> (ResourcePool, Request)
 
 -- comparison operations used to sort the Pool:
 
@@ -328,7 +333,7 @@ rsSkillOrder :: ResourceComparison
 rsSkillOrder r1 r2 = let (Skills s1) = skills r1
                          (Skills s2) = skills r2
                      in
-                      compare (S.size s1) (S.size s2)
+<                      compare (S.size s1) (S.size s2)
 \end{code}
 
 Now if we want so sort by multiple criteria, we need to combine
@@ -360,15 +365,32 @@ the Pool and doing a little List processing. Unfortunately the order
 of parameters in our function does not work well with |MapAccumL|, so
 we need to do some swapping and flipping.
 
+xxx erq allocate erq even if the name doesn't match!
+
 \begin{code}
-poolSatisfy pool req = swap $ L.mapAccumL satisfy' req sortedPool
+--xxpoolSatisfy pool req = swap $ L.mapAccumL satisfy' req sortedPool
+--  where
+--    swap (x,y) = (y,x)
+--    satisfy' a b = swap $ satisfy b a
+--    sortedPool = case req of
+--      (Qrq _ _) -> L.sortBy quanFirst pool
+--      (Erq _ _) -> L.sortBy enumFirst pool
+
+poolAllocate :: [Resource] -> Request -> (Request, [Resource])
+poolAllocate pool req = foldl alloc (req,[]) sortedPool
   where
-    swap (x,y) = (y,x)
-    satisfy' a b = swap $ satisfy b a
+    alloc :: (Request, [ApprResource]) -> Resource -> (Request, [ApprResource])
+    alloc (req,grants) resource = let (leftReq, leftRes, apprRes) = allocate resource req
+                                  in  case apprRes of
+                                    NoResource -> (leftReq, grants)
+                                    _          -> (leftReq, apprRes:grants)
     sortedPool = case req of
       (Qrq _ _) -> L.sortBy quanFirst pool
       (Erq _ _) -> L.sortBy enumFirst pool
+
+
 \end{code}
+
 
 
 
@@ -534,7 +556,33 @@ the Pool may not be constant throughout the period, the "lowering" may
 affect several changes withing the perdiod of allocation.
 
 At the end of the period the pool resumes the state it would have had
-without the allocation.
+without the allocation. This can be seen as an "unallocate" operation,
+or simply and "addResource" operation.
+
+The reason why the pool is not constant is because resources are added
+and removed from it. So we might as well say: a Pool which changes
+over time is a Pool with an initial state and a number of timed
+additions and removals.
+
+This has some significant benefits over a Pool whose value is perstent
+for any point in time (or at least for any point of change).
+
+One is that removals can be prioritized. When you remove a sorting
+machine from a sorting center, then subsequent allocations of that
+machine will not be possible. Howevers somone might already have
+allocated that machine for a future point in time. The consequence of
+this should not be, that you cannot remove tha machine, but that the
+future allocation will no longer be possible.
+
+Likewise regular allocations do not necessarily have to be treated in
+a first-come-first-serve fashion. It may well happen, that a later
+allocation will cancel an allocation which was made earlier.
+
+
+
+
+
+
 
 
 
