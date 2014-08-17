@@ -1,6 +1,7 @@
 import Data.List
 import Data.List.Split
 import Data.Maybe
+import Debug.Trace
 import System.Process
 import Control.Monad.State
 import Data.Graph.Inductive.Graph 
@@ -8,14 +9,13 @@ import Data.Graph.Inductive.Graphviz
 import qualified Data.Graph.Inductive.PatriciaTree as P
 
 
-type Id = Node
 type Label = String
 
 data CNode pl = N0 Label pl | NN Label [LNode (CNode pl)]  deriving (Eq)
 instance Show (CNode pl)
         where 
             show (N0 lbl _)    = lbl
-            show (NN lbl ns) = lbl ++":"++ (show ns) 
+            show (NN lbl ns) = lbl -- ++":"++ (show ns) 
 
 data CEdge = E0 Label | EN Label [LEdge CEdge]  deriving (Eq)
 instance Show CEdge 
@@ -23,24 +23,26 @@ instance Show CEdge
             show (E0 s) = "" -- s
             show (EN s _) = "["++s++"]"
 
+type CGraph a = P.Gr (CNode a) CEdge
 ------------------------------------------------------------
 -- Creating simple Nodes and Eges
 ------------------------------------------------------------
 
-n0 :: (Show pl) => Id -> pl -> (LNode (CNode pl))
+-- | Node is actually just an Id (i.e. an Int)
+n0 :: (Show pl) => Node -> pl -> (LNode (CNode pl))
 n0 i pl = (i, N0 lbl pl)
              where
                  lbl = show pl ++ (show i)
 
-nnEmpty :: Id -> Label -> (LNode (CNode pl))
+nnEmpty :: Node -> Label -> (LNode (CNode pl))
 nnEmpty i lbl = (i, NN lbl [])
 
-e0 :: Id -> Id -> (LEdge CEdge)
+e0 :: Node -> Node -> (LEdge CEdge)
 e0 i j = (i,j, E0 lbl)
         where
             lbl = show i ++ "->" ++ show j
 
-enEmpty :: Id -> Id -> Label -> (LEdge CEdge)
+enEmpty :: Node -> Node -> Label -> (LEdge CEdge)
 enEmpty i j lbl = (i,j, EN lbl [])
 
 getPayload :: (CNode pl) -> pl
@@ -50,7 +52,7 @@ getNodePayload :: LNode (CNode pl) -> pl
 getNodePayload (id, n) = getPayload n
 
 ------------------------------------------------------------
--- Unique IDs
+-- Unique Node IDs
 ------------------------------------------------------------
 
 nextval :: State Int Int
@@ -85,7 +87,7 @@ connectAll nodes eqf = [newEdge (from, to)| from<-nodes, to<-nodes, eqf from to]
 -- Example Graph
 ------------------------------------------------------------
 
-data Payload = Pl {
+data ExPayload = Pl {
             pType    :: Char, 
             accepts  :: [String], 
             produces :: [String], 
@@ -110,10 +112,10 @@ splitIn n xs
                  piece =  ceiling $ (fromIntegral len)/ (fromIntegral n)
 
 
-instance Show Payload where
+instance Show ExPayload where
         show pl = concatMap ( $ pl) [show . pType] 
 
-exGraph :: Int -> State Int (P.Gr (CNode Payload) CEdge)
+exGraph :: Int -> State Int (CGraph ExPayload)
 exGraph fan = do   
     let collOffices       = (2*fan)  `named` "CO"
         centers           = (2*fan)  `named` "CE"
@@ -174,8 +176,8 @@ exGraph fan = do
 -- aggregating and dissecting individual nodes and edges
 ------------------------------------------------------------
 
-aggNodes :: Id -> Label -> [LNode (CNode pl)] -> LNode (CNode pl)
-aggNodes i lbl nodes = foldr addTo (nnEmpty i lbl) nodes
+aggNodes :: (Node,Label) -> [LNode (CNode pl)] -> LNode (CNode pl)
+aggNodes (i,lbl) nodes = foldr addTo (nnEmpty i lbl) nodes
         where
             addTo :: LNode (CNode pl) -> LNode (CNode pl) -> LNode (CNode pl)
             addTo nx (iAgg, (NN lblAgg nsAgg)) = (iAgg, (NN lblAgg (nx:nsAgg)))
@@ -185,8 +187,8 @@ disNNode :: LNode (CNode pl) -> [LNode (CNode pl)]
 disNNode  (i, NN lbl nodes) = nodes
 disNNode  (i, N0 lbl _) = error $ lbl ++ " is not an aggregate node."
 
-aggEdges :: Id -> Id -> Label -> [LEdge CEdge] -> LEdge CEdge
-aggEdges i j lbl edges = foldr addTo (enEmpty i j lbl) edges
+aggEdges :: (Node,Node,Label) -> [LEdge CEdge] -> LEdge CEdge
+aggEdges (i,j,lbl) edges = foldr addTo (enEmpty i j lbl) edges
         where
             addTo :: LEdge CEdge -> LEdge CEdge -> LEdge CEdge
             addTo ex (iAgg, jAgg, (EN lblAgg esAgg)) = (iAgg, jAgg, (EN lblAgg (ex:esAgg)))
@@ -200,9 +202,9 @@ disNEdge (i,j, E0 lbl) = error $ lbl ++ " is not an aggregate edge."
 -- Aggregator functions
 ------------------------------------------------------------
 
-type Aggregator pl = (P.Gr (CNode pl) CEdge) -> Id -> Id -> Maybe pl
+type Aggregator pl = (CGraph pl) -> Node -> Node -> Maybe pl
 
-hasCommonNeighb  :: (Id -> [Node]) -> Aggregator pl
+hasCommonNeighb  :: (Node -> [Node]) -> Aggregator pl
 
 hasCommonNeighb f gr id1 id2 = 
         let succs =  map (fromJust . lab gr) $ intersect (f id1) (f id2)
@@ -216,28 +218,81 @@ hasCommonSucc gr  = hasCommonNeighb (suc gr) gr
 hasCommonPred :: Aggregator pl
 hasCommonPred gr = hasCommonNeighb (pre gr) gr 
 
+------------------------------------------------------------
+-- Collapsing and expanding graphs
+------------------------------------------------------------
 
----getPayload $ head $ (map lab gr) $ intersect (suc gr id1) (suc gr id2)
 
+
+id2node :: Graph gr => gr t b -> Node -> LNode t
+id2node g n = (n, fromJust $ lab g n)
+
+xgroup :: (Eq a, Ord b) => [(a,b)] -> (a->b->Bool) -> [([a],b)]
+xgroup l f = let unq = (nub . sort . map snd) l
+          in do
+              u <- unq
+              let xs = [fst x | x <- l, snd x == u]
+              return (xs, u)
+
+-- aggEdges :: (Node,Node,Label) -> [LEdge CEdge]      -> LEdge CEdge
 
 {-
-
-payload gr id = let (Just l) = lab gr id
-                    Nothing  = error $ "Node " ++ (show id) ++ " is not in graph."
-                in getPayload (id,l)
-
-exPayP (a1,b1,c1) (a2,b2,c2) = a1 == a2
-
-groupNodes :: (P.Gr CNode CEdge) -> Aggregator -> [[LNode CNode]]
-groupNodes = undefined
+Several Problems:
+(1) It is too difficult to read, particularly the Edges stuff
+(2) I see new edges [(2,23,[bar]),(3,23,[bar]),(6,23,[bar]),(8,23,[bar])]
+    Where 23 is the new node. Nodes 2 and 3 were collapsed and are no longer in the tree => exception
+    Edges which are completely inside the group do not have a collapsed edge, they should just disappear
+    This however, means that the whole idea of "EN" Edges may be wrong
+    However, if we want to uncollapse we need the old edges somewhere.
+(3) I am getting doubts that the NN and EN types are such a good idea. Alternatively one might hold the 
+    original graph and the collapsed graph. Problem is how to uncollapse part of the graph.  Still it might 
+    be possible to operate only on the original graph and produce collapsed graphs as needed. Uncollapsing part
+    of the graph would then be just another (weaker) collapse of the original graph. We would then need an algebra on
+    operations, such that we can compute collapse -> uncollapse -> collapse
+(4) I have doubt about the order of (from,to) in the new edges
 -}
+
+groupNodes :: Label -> [Node] -> State Int (CGraph pl) -> State Int (CGraph pl)
+groupNodes label ids graph =  do
+    gr <- graph
+    id <- nextval 
+    let oldNodes = map (id2node gr) ids
+        newNode  = (aggNodes (id,label) oldNodes) 
+        gr1      = insNode newNode gr 
+        gr2      = foldr delNode' gr1  oldNodes
+        -- Now the edges:
+        fromEdgesMapping = do
+            old   <- ids
+            toOld <- from $ context gr old            :: [(CEdge, Node)]
+            let oldEdge = (snd toOld, old, fst toOld) :: LEdge CEdge
+                newEdge = (snd toOld, id, "bar")      :: (Node, Node, Label)
+            return (oldEdge, newEdge)
+
+        newEdgesTo = map (\(olds,new) -> aggEdges new olds) $ xgroup fromEdgesMapping (\(a,_,_)(b,_,_) -> a==b) 
+        gr3 = foldr insEdge gr2  (trace (show newEdgesTo) newEdgesTo)
+
+    return $ gr3
+            where
+                delNode' (i,_) g = delNode i g
+                to (toNode,n,l,f) = toNode
+                from (a,b,c,d) = d
+                sameNode (_,i) (_,j) = i==j
+
+
+
+
+exGraph2 = groupNodes "foo"  [0,1,2,3,4] (exGraph 1)
+        
+
+unState  gr = fst $ runState gr 0
+    
 
 
 ------------------------------------------------------------
 -- Drawing
 ------------------------------------------------------------
 draw graph = do
-    let g = fst $ runState graph 0
+    let g = unState graph
     writeFile "xxx.dot" (graphviz' g)
     createProcess $ shell "dot -T eps -Gnodesep=0.1  -Nstyle=filled,rounded -Nshape=box -Nfontname=Arial -Efontname=Arial -Epenwidth=3 xxx.dot > xxx.eps"
 
