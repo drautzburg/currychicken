@@ -17,11 +17,10 @@ instance Show (CNode pl)
             show (N0 lbl _)    = lbl
             show (NN lbl ns) = lbl -- ++":"++ (show ns) 
 
-data CEdge = E0 Label | EN Label [LEdge CEdge]  deriving (Eq)
+data CEdge = E0 Label deriving (Eq)
 instance Show CEdge 
         where 
             show (E0 s) = "" -- s
-            show (EN s _) = "["++s++"]"
 
 type CGraph a = P.Gr (CNode a) CEdge
 ------------------------------------------------------------
@@ -29,23 +28,20 @@ type CGraph a = P.Gr (CNode a) CEdge
 ------------------------------------------------------------
 
 -- | Node is actually just an Id (i.e. an Int)
-n0 :: (Show pl) => Node -> pl -> (LNode (CNode pl))
+n0 :: (Show pl) => Node -> pl -> LNode (CNode pl)
 n0 i pl = (i, N0 lbl pl)
              where
-                 lbl = show pl ++ (show i)
+                 lbl = show pl ++ show i
 
-nnEmpty :: Node -> Label -> (LNode (CNode pl))
+nnEmpty :: Node -> Label -> LNode (CNode pl)
 nnEmpty i lbl = (i, NN lbl [])
 
-e0 :: Node -> Node -> (LEdge CEdge)
+e0 :: Node -> Node -> LEdge CEdge
 e0 i j = (i,j, E0 lbl)
         where
             lbl = show i ++ "->" ++ show j
 
-enEmpty :: Node -> Node -> Label -> (LEdge CEdge)
-enEmpty i j lbl = (i,j, EN lbl [])
-
-getPayload :: (CNode pl) -> pl
+getPayload :: CNode pl -> pl
 getPayload (N0 lbl payload)    = payload
 
 getNodePayload :: LNode (CNode pl) -> pl
@@ -65,21 +61,21 @@ nextval = do
 createNode :: (Show pl) => pl -> State Int (LNode (CNode pl))
 createNode payload = do
     id <- nextval
-    return  $ (n0 id payload)
+    return  $ n0 id payload
 
 
 createNodes :: (Show pl) => [pl] -> State Int [LNode (CNode pl)]
-createNodes payloads = sequence $ map createNode payloads
+createNodes = mapM createNode
 
 connect :: [(LNode (CNode pl),LNode (CNode pl))] -> [LEdge CEdge]
-connect nodePairs = map newEdge nodePairs
+connect = map newEdge 
 
 newEdge ((i,_), (j,_)) = e0 i j
 
 type NodeEq pl = LNode (CNode pl) -> LNode (CNode pl) -> Bool
 
 -- | Connect all nodes in nodes which satisfy an equality criterion
-connectAll :: [LNode (CNode pl)] -> (NodeEq pl)-> [LEdge CEdge]
+connectAll :: [LNode (CNode pl)] -> NodeEq pl-> [LEdge CEdge]
 connectAll nodes eqf = [newEdge (from, to)| from<-nodes, to<-nodes, eqf from to]
 
 
@@ -106,10 +102,10 @@ pl t a p o d = Pl {
 splitIn :: Int -> [a] -> [[a]]
 splitIn n xs 
              | n == 0       = []
-             | otherwise    = (take piece xs) : splitIn (n-1) (drop piece xs)
+             | otherwise    = take piece xs : splitIn (n-1) (drop piece xs)
              where
                  len   = length xs
-                 piece =  ceiling $ (fromIntegral len)/ (fromIntegral n)
+                 piece =  ceiling $ fromIntegral len/ fromIntegral n
 
 
 instance Show ExPayload where
@@ -155,54 +151,43 @@ exGraph fan = do
                             ]
 
     let nodes = inUsort ++ unpUsort  ++ inPsort ++ unpPsort ++ srtOutw ++ outPsort ++ srtInw ++ srtSeq ++ outSeq
-        edges = concat [
-                 connectAll nodes (\x y -> and [
-                                            origDest x y,
-                                            prodAcc x y 
-                                           ])
-                ]
+        edges = connectAll nodes (\x y -> origDest x y
+                                          &&
+                                          prodAcc x y 
+                                 )
+
 
     return $ mkGraph nodes edges
           where
               named :: Int -> String -> [String]
-              named n s = [s ++ (show x) | x <- [1..n]]
+              named n s = [s ++ show x | x <- [1..n]]
               distribute xs ys = zip xs (splitIn (length xs) ys)
 
               intersects s1 s2 = intersect s1 s2 /= []
-              origDest x y     = (dest (getNodePayload x)) == (orig (getNodePayload y))
-              prodAcc x y      = (produces (getNodePayload x)) `intersects`  (accepts (getNodePayload y))
+              origDest x y     = dest (getNodePayload x) == orig (getNodePayload y)
+              prodAcc x y      = produces (getNodePayload x) `intersects`  accepts (getNodePayload y)
 
 ------------------------------------------------------------
 -- aggregating and dissecting individual nodes and edges
 ------------------------------------------------------------
 
 aggNodes :: (Node,Label) -> [LNode (CNode pl)] -> LNode (CNode pl)
-aggNodes (i,lbl) nodes = foldr addTo (nnEmpty i lbl) nodes
+aggNodes (i,lbl) = foldr addTo (nnEmpty i lbl) 
         where
             addTo :: LNode (CNode pl) -> LNode (CNode pl) -> LNode (CNode pl)
-            addTo nx (iAgg, (NN lblAgg nsAgg)) = (iAgg, (NN lblAgg (nx:nsAgg)))
+            addTo nx (iAgg, NN lblAgg nsAgg) = (iAgg, NN lblAgg (nx:nsAgg))
 
 
 disNNode :: LNode (CNode pl) -> [LNode (CNode pl)]
 disNNode  (i, NN lbl nodes) = nodes
 disNNode  (i, N0 lbl _) = error $ lbl ++ " is not an aggregate node."
 
-aggEdges :: (Node,Node,Label) -> [LEdge CEdge] -> LEdge CEdge
-aggEdges (i,j,lbl) edges = foldr addTo (enEmpty i j lbl) edges
-        where
-            addTo :: LEdge CEdge -> LEdge CEdge -> LEdge CEdge
-            addTo ex (iAgg, jAgg, (EN lblAgg esAgg)) = (iAgg, jAgg, (EN lblAgg (ex:esAgg)))
-
-disNEdge :: LEdge CEdge -> [LEdge CEdge]
-disNEdge (i,j, EN lbl edges) = edges
-disNEdge (i,j, E0 lbl) = error $ lbl ++ " is not an aggregate edge."
-
 
 ------------------------------------------------------------
 -- Aggregator functions
 ------------------------------------------------------------
 
-type Aggregator pl = (CGraph pl) -> Node -> Node -> Maybe pl
+type Aggregator pl = CGraph pl -> Node -> Node -> Maybe pl
 
 hasCommonNeighb  :: (Node -> [Node]) -> Aggregator pl
 
@@ -223,7 +208,7 @@ hasCommonPred gr = hasCommonNeighb (pre gr) gr
 ------------------------------------------------------------
 
 
-
+-- Helpers
 id2node :: Graph gr => gr t b -> Node -> LNode t
 id2node g n = (n, fromJust $ lab g n)
 
@@ -252,6 +237,7 @@ Several Problems:
 (4) I have doubt about the order of (from,to) in the new edges
 -}
 
+{-
 groupNodes :: Label -> [Node] -> State Int (CGraph pl) -> State Int (CGraph pl)
 groupNodes label ids graph =  do
     gr <- graph
@@ -282,9 +268,9 @@ groupNodes label ids graph =  do
 
 
 exGraph2 = groupNodes "foo"  [0,1,2,3,4] (exGraph 1)
-        
+-}        
 
-unState  gr = fst $ runState gr 0
+unState  gr = evalState gr 0
     
 
 
