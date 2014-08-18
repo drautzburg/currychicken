@@ -1,4 +1,6 @@
 import Data.List
+import Data.Function
+import qualified Data.List.Ordered as O
 import Data.List.Split
 import Data.Maybe
 import Debug.Trace
@@ -8,6 +10,7 @@ import Data.Graph.Inductive.Graph
 import Data.Graph.Inductive.Graphviz
 import qualified Data.Graph.Inductive.PatriciaTree as P
 
+trc s x = trace (s ++ ":" ++show x) x
 
 type Label = String
 
@@ -99,6 +102,8 @@ pl t a p o d = Pl {
                    dest     = d
                }
 
+nullPayload = pl '-' [] [] "" ""
+
 splitIn :: Int -> [a] -> [[a]]
 splitIn n xs 
              | n == 0       = []
@@ -187,21 +192,23 @@ disNNode  (i, N0 lbl _) = error $ lbl ++ " is not an aggregate node."
 -- Aggregator functions
 ------------------------------------------------------------
 
-type Aggregator pl = CGraph pl -> Node -> Node -> Maybe pl
+type Aggregator pl = LNode (CNode pl) -> LNode (CNode pl)
 
-hasCommonNeighb  :: (Node -> [Node]) -> Aggregator pl
+byFrom :: Aggregator ExPayload
+byFrom (n, N0 lbl pl) = (n, N0 lbl' pl')
+        where
+            pl'  = nullPayload {orig = orig pl}
+            lbl' = "From " ++ orig pl
 
-hasCommonNeighb f gr id1 id2 = 
-        let succs =  map (fromJust . lab gr) $ intersect (f id1) (f id2)
-        in case length succs of
-               0 -> Nothing
-               _ -> (Just . getPayload . head) succs -- use first common as new paload
+samePayload (_, N0 _ pl1) (_, N0 _ pl2) = pl1 == pl2
 
-hasCommonSucc :: Aggregator pl
-hasCommonSucc gr  = hasCommonNeighb (suc gr) gr 
+aggregateBy
+  :: (Eq a, Graph gr) =>
+     gr a1 b1 -> (LNode a1 -> (b, CNode a)) -> [[b]]
 
-hasCommonPred :: Aggregator pl
-hasCommonPred gr = hasCommonNeighb (pre gr) gr 
+aggregateBy gr agg =  map (map fst) $ groupBy samePayload $  map agg $ labNodes gr
+
+-- xxx need to get the labels
 
 ------------------------------------------------------------
 -- Collapsing and expanding graphs
@@ -212,63 +219,53 @@ hasCommonPred gr = hasCommonNeighb (pre gr) gr
 id2node :: Graph gr => gr t b -> Node -> LNode t
 id2node g n = (n, fromJust $ lab g n)
 
-xgroup :: (Eq a, Ord b) => [(a,b)] -> (a->b->Bool) -> [([a],b)]
-xgroup l f = let unq = (nub . sort . map snd) l
-          in do
-              u <- unq
-              let xs = [fst x | x <- l, snd x == u]
-              return (xs, u)
 
 -- aggEdges :: (Node,Node,Label) -> [LEdge CEdge]      -> LEdge CEdge
 
-{-
-Several Problems:
-(1) It is too difficult to read, particularly the Edges stuff
-(2) I see new edges [(2,23,[bar]),(3,23,[bar]),(6,23,[bar]),(8,23,[bar])]
-    Where 23 is the new node. Nodes 2 and 3 were collapsed and are no longer in the tree => exception
-    Edges which are completely inside the group do not have a collapsed edge, they should just disappear
-    This however, means that the whole idea of "EN" Edges may be wrong
-    However, if we want to uncollapse we need the old edges somewhere.
-(3) I am getting doubts that the NN and EN types are such a good idea. Alternatively one might hold the 
-    original graph and the collapsed graph. Problem is how to uncollapse part of the graph.  Still it might 
-    be possible to operate only on the original graph and produce collapsed graphs as needed. Uncollapsing part
-    of the graph would then be just another (weaker) collapse of the original graph. We would then need an algebra on
-    operations, such that we can compute collapse -> uncollapse -> collapse
-(4) I have doubt about the order of (from,to) in the new edges
--}
+
+type GraphTransform pl = CGraph pl -> CGraph pl
 
 
-groupNodes :: Label -> [Node] -> State Int (CGraph pl) -> State Int (CGraph pl)
-groupNodes label ids graph =  do
+groupNodes :: State Int (CGraph pl) -> Label -> [Node] ->  State Int (CGraph pl)
+groupNodes graph label ids  =  do
     gr    <- graph
     newId <- nextval 
     let oldNodes    = map (id2node gr) ids
-        newNode     = (aggNodes (newId,label) oldNodes) 
-        addNewNode  = insNode newNode 
-        delOldNodes = delNodes ids
+        newNode     = aggNodes (newId,label) oldNodes
+        addNewNode  = insNode $ trc "newn" newNode  
+        delOldNodes = delNodes $ trc "deln" ids     :: GraphTransform pl
         -- Now the edges:
         oldEdgesTo = do
             old     <- ids
             toOld   <- pre gr old
-            return (toOld,old)
+            return $ trc "oet"(toOld, old)
         oldEdgesFrom = do
             old     <- ids
             fromOld   <- suc gr old
-            return (old, fromOld)
-
-        newEdges    = uniq $ remap (const newId) id oldEdgesTo ++ remap id (const newId) oldEdgesTo
-        delOldEdges = delEdges (oldEdgesTo ++ oldEdgesFrom)
-        addNewEdges = insEdges  (map (\(i,j) -> e0 i j) newEdges)
+            return $ trc "oef" (old, fromOld)
+        oldEdgesWithin = trc "oewi" [(i,j) | (i,j,lbl) <- labEdges gr, i `elem` ids, j `elem` ids]
+        newEdges    = uniq $ remap 2 newId  oldEdgesTo   oldEdgesWithin ++ 
+                             remap 1 newId  oldEdgesFrom oldEdgesWithin
+        delOldEdges = delEdges $ trc "dele" (oldEdgesTo ++ oldEdgesFrom)  :: GraphTransform pl
+        addNewEdges = insEdges $ map (uncurry e0) newEdges                :: GraphTransform pl
         
     return $ (addNewEdges . delOldEdges . addNewNode . delOldNodes) gr
             where
                 to (toNode,n,l,f) = toNode
                 from (a,b,c,d) = d
                 uniq = nub . sort
-                remap f g edges = map (\(x,y) -> (f x, g y)) edges
+                remap pos id edges edges' = let es = edges `O.minus` edges'
+                                            in case pos of
+                                                   1 -> map (\(i, j) -> (id, j)) es
+                                                   2 -> map (\(i, j) -> (i, id)) es
 
-exGraph2 = groupNodes "foo"  [0,1,2,3,4] (exGraph 1)
 
+exGraph2 = groupNodes (exGraph 1) "foo"  [0,1,2,3,4,12,13,14,15] 
+
+-- xxx
+exGraph3 = foldr (groupNodes (exGraph 1) "g3") (exGraph 1) (aggregateBy g1 byFrom)
+           where 
+               g1 = unState (exGraph 1)
 
 unState  gr = evalState gr 0
     
