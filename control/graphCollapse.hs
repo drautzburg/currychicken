@@ -105,7 +105,7 @@ splitIn n xs
              | otherwise    = take piece xs : splitIn (n-1) (drop piece xs)
              where
                  len   = length xs
-                 piece =  ceiling $ fromIntegral len/ fromIntegral n
+                 piece =  ceiling $ (fromIntegral len ::Double)/ fromIntegral n
 
 
 instance Show ExPayload where
@@ -237,38 +237,38 @@ Several Problems:
 (4) I have doubt about the order of (from,to) in the new edges
 -}
 
-{-
+
 groupNodes :: Label -> [Node] -> State Int (CGraph pl) -> State Int (CGraph pl)
 groupNodes label ids graph =  do
-    gr <- graph
-    id <- nextval 
-    let oldNodes = map (id2node gr) ids
-        newNode  = (aggNodes (id,label) oldNodes) 
-        gr1      = insNode newNode gr 
-        gr2      = foldr delNode' gr1  oldNodes
+    gr    <- graph
+    newId <- nextval 
+    let oldNodes    = map (id2node gr) ids
+        newNode     = (aggNodes (newId,label) oldNodes) 
+        addNewNode  = insNode newNode 
+        delOldNodes = delNodes ids
         -- Now the edges:
-        fromEdgesMapping = do
-            old   <- ids
-            toOld <- from $ context gr old            :: [(CEdge, Node)]
-            let oldEdge = (snd toOld, old, fst toOld) :: LEdge CEdge
-                newEdge = (snd toOld, id, "bar")      :: (Node, Node, Label)
-            return (oldEdge, newEdge)
+        oldEdgesTo = do
+            old     <- ids
+            toOld   <- pre gr old
+            return (toOld,old)
+        oldEdgesFrom = do
+            old     <- ids
+            fromOld   <- suc gr old
+            return (old, fromOld)
 
-        newEdgesTo = map (\(olds,new) -> aggEdges new olds) $ xgroup fromEdgesMapping (\(a,_,_)(b,_,_) -> a==b) 
-        gr3 = foldr insEdge gr2  (trace (show newEdgesTo) newEdgesTo)
-
-    return $ gr3
+        newEdges    = uniq $ remap (const newId) id oldEdgesTo ++ remap id (const newId) oldEdgesTo
+        delOldEdges = delEdges (oldEdgesTo ++ oldEdgesFrom)
+        addNewEdges = insEdges  (map (\(i,j) -> e0 i j) newEdges)
+        
+    return $ (addNewEdges . delOldEdges . addNewNode . delOldNodes) gr
             where
-                delNode' (i,_) g = delNode i g
                 to (toNode,n,l,f) = toNode
                 from (a,b,c,d) = d
-                sameNode (_,i) (_,j) = i==j
-
-
-
+                uniq = nub . sort
+                remap f g edges = map (\(x,y) -> (f x, g y)) edges
 
 exGraph2 = groupNodes "foo"  [0,1,2,3,4] (exGraph 1)
--}        
+
 
 unState  gr = evalState gr 0
     
