@@ -15,42 +15,60 @@ trc s x = trace (s ++ ":" ++show x) x
 
 type Label = String
 
--- in the NN case we only need NN Label [Node] and no payload
-data CNode pl = N0 Label pl | NN Label [Node]  deriving (Eq)
+data Payload a = PL {label :: String, payload::a}
+               deriving (Eq)
+
+instance Show (Payload a)
+        where
+            show = label
+
+
+
+data CNode pl = N0 (Payload pl) | NN (Payload pl) [Node]  deriving (Eq)
 instance Show (CNode pl)
         where 
-            show (N0 lbl _)    = lbl
-            show (NN lbl ns) = lbl -- ++":"++ (show ns) 
+            show (N0 pl)    = show pl
+            show (NN pl ns) = show pl -- ++":"++ (show ns) 
+
 
 data CEdge = E0 Label deriving (Eq)
 instance Show CEdge 
         where 
             show (E0 s) = "" -- s
 
+
 type CGraph a = P.Gr (CNode a) CEdge
+
 ------------------------------------------------------------
 -- Creating simple Nodes and Eges
 ------------------------------------------------------------
 
 -- | Node is actually just an Id (i.e. an Int)
-n0 :: (Show pl) => Node -> pl -> LNode (CNode pl)
-n0 i pl = (i, N0 lbl pl)
-             where
-                 lbl = show i ++ show pl 
+--n0 :: (Show pl) => Node -> (Payload a) -> LNode (CNode pl)
+n0 :: Int -> Payload pl -> LNode (CNode pl)
+n0 i pl = (i, N0 pl)
 
+
+{-
 nnEmpty :: Node -> Label -> LNode (CNode pl)
 nnEmpty i lbl = (i, NN lbl [])
+-}
+
 
 e0 :: Node -> Node -> LEdge CEdge
 e0 i j = (i,j, E0 lbl)
         where
             lbl = show i ++ "->" ++ show j
 
+
 getPayload :: CNode pl -> pl
-getPayload (N0 lbl payload)    = payload
+getPayload (N0 pl)   = payload pl
+getPayload (NN pl _) = payload pl
+
 
 getNodePayload :: LNode (CNode pl) -> pl
 getNodePayload (id, n) = getPayload n
+
 
 ------------------------------------------------------------
 -- Unique Node IDs
@@ -63,14 +81,16 @@ nextval = do
     return id
 
 
-createNode :: (Show pl) => pl -> State Int (LNode (CNode pl))
+createNode :: (Payload pl) -> State Int (LNode (CNode pl))
 createNode payload = do
     id <- nextval
     return  $ n0 id payload
 
 
-createNodes :: (Show pl) => [pl] -> State Int [LNode (CNode pl)]
+
+createNodes :: [Payload pl] -> State Int [LNode (CNode pl)]
 createNodes = mapM createNode
+
 
 ------------------------------------------------------------
 -- Connecting Edges
@@ -82,18 +102,21 @@ connect = map newEdge
 
 newEdge ((i,_), (j,_)) = e0 i j
 
+
 type NodeEq pl = LNode (CNode pl) -> LNode (CNode pl) -> Bool
 
 -- | Connect all nodes in nodes which satisfy an equality criterion
 connectAll :: [LNode (CNode pl)] -> NodeEq pl-> [LEdge CEdge]
 connectAll nodes eqf = [newEdge (from, to)| from<-nodes, to<-nodes, eqf from to]
 
+type Projection a b = (Payload a) -> (Payload b) -- xxx
+
 
 ------------------------------------------------------------
 -- Example Graph
 ------------------------------------------------------------
 
-data ExPayload = Pl {
+data ExPayload = Expl {
             pType    :: Char, 
             accepts  :: [String], 
             produces :: [String], 
@@ -101,15 +124,31 @@ data ExPayload = Pl {
             dest     :: String
 } deriving (Eq, Ord)
 
-pl t a p o d = Pl {
-                   pType    = t,
-                   accepts  = a,
-                   produces = p,
-                   orig     = o,
-                   dest     = d
-               }
+instance Show ExPayload where
+        show pl = trc "show" $ " " ++ [pType pl] ++ "\\n" ++ (orig pl) ++ "\\n" ++ (dest pl)
+
+
+pl t a p o d = let pl = Expl{
+                            pType    = t,
+                            accepts  = a,
+                            produces = p,
+                            orig     = o,
+                            dest     = d
+                        }
+               in
+                   PL { label   = show pl,
+                        payload = pl
+                      }
+
 
 nullPayload = pl '-' [] [] "" ""
+
+extTransport products orig dest        = pl 'T' products products orig dest
+intTransport products orig dest        = pl 't' products products orig dest
+unpack       accepts produces location = pl 'U' accepts produces location location
+outwSort     accepts produces location = pl 'O' accepts produces location location
+inwSort      accepts produces location = pl 'I' accepts produces location location
+seqSort      accepts produces location = pl 'S' accepts produces location location
 
 splitIn :: Int -> [a] -> [[a]]
 splitIn n xs 
@@ -120,8 +159,8 @@ splitIn n xs
                  piece =  ceiling $ (fromIntegral len ::Double)/ fromIntegral n
 
 
-instance Show ExPayload where
-        show pl = trc "show" $ " " ++ [pType pl] ++ "\\n" ++ (orig pl) ++ "\\n" ++ (dest pl)
+
+
 
 exGraph :: Int -> State Int (CGraph ExPayload)
 exGraph fan = do   
@@ -134,49 +173,49 @@ exGraph fan = do
         walks             = (16*fan) `named` "WK"
         delOffices        = (6*fan)  `named` "DO"
 
-    coll_usort  <- createNodes [pl 'T'  ["enters"] ["From"++collOffice] collOffice "CollArrival"
+    coll_usort  <- createNodes [extTransport  ["From"++collOffice] collOffice "CollArrival" 
                             | collOffice <- collOffices
                             ]
-    unpUsort <- createNodes [pl 'U'  ["From"++collOffice] ["From"++collOffice++"Unp"] "CollArrival" "CollArrival"
+    unpUsort <- createNodes [ unpack ["From"++collOffice] ["From"++collOffice++"Unp"] "CollArrival" 
                             | collOffice <- collOffices
                             ]
-    collArr_outw <- createNodes [pl 't'  ["From"++collOffice++"Unp"] ["From"++collOffice++"Unp"] "CollArrival" "OutwArea"
+    collArr_outw <- createNodes [intTransport ["From"++collOffice++"Unp"] "CollArrival" "OutwArea"
                             | collOffice <- collOffices
                             ]
-    ctrs_psort  <- createNodes [pl 'T'  [center] ["From"++center] center "IctArrival"
+    ctrs_psort  <- createNodes [extTransport ["From"++center] center "IctArrival"
                             | center <- centers
                             ]
-    unpPsort <- createNodes [pl 'U'  ["From"++center] myInwGroups "IctArrival" "IctArrival"
+    unpPsort <- createNodes [unpack  ["From"++center] myInwGroups "IctArrival"
                             | center <- centers
                             ]
-    ict_inw <- createNodes [pl 't' [inwGroup] [inwGroup] "IctArrival" "InwArea"
+    ict_inw <- createNodes [intTransport [inwGroup] "IctArrival" "InwArea"
                             | inwGroup <- myInwGroups
                             ]
-    srtOutw  <- createNodes [pl 'O'  ["From"++collOffice++"Unp"] (myInwGroups++theirInwGroups) "OutwArea" "OutwArea"
+    srtOutw  <- createNodes [outwSort ["From"++collOffice++"Unp"] (myInwGroups++theirInwGroups) "OutwArea"
                             | x<-outwRuns, collOffice <- collOffices
                             ]
-    outw_inw <- createNodes [pl 't'  [inwGroup] [inwGroup] "OutwArea" "InwArea"
+    outw_inw <- createNodes [intTransport  [inwGroup] "OutwArea" "InwArea"
                             | inwGroup <- myInwGroups
                             ]
-    srtInw   <- createNodes [pl 'I'  [inwardGroup]  seqGroup "InwArea" "InwArea"
+    srtInw   <- createNodes [inwSort [inwardGroup]  seqGroup "InwArea" 
                             |(inwardGroup, seqGroup) <- distribute myInwGroups sequenceRuns
                             ]
-    inw_seq   <- createNodes [pl 't'  [seqGroup]  [seqGroup] "InwArea" "SeqArea"
+    inw_seq   <- createNodes [intTransport  [seqGroup] "InwArea" "SeqArea"
                             |seqGroup <- sequenceRuns
                             ]
-    srtSeq   <- createNodes [pl 'S'  [sequenceRun] walk "SeqArea" "SeqArea"
+    srtSeq   <- createNodes [seqSort  [sequenceRun] walk "SeqArea"
                             | (sequenceRun, walk) <- distribute sequenceRuns walks
                             ]
-    seq_dept <- createNodes [pl 't'  [walk] [walk] "SeqArea" "DoDeparture"
+    seq_dept <- createNodes [intTransport [walk] "SeqArea" "DoDeparture"
                             | walk <- walks
                             ]
-    seq_dos   <- createNodes [pl 'T'  walk ["For"++delOffice] "DoDeparture" delOffice
+    seq_dos   <- createNodes [extTransport walk  "DoDeparture" delOffice
                             | (delOffice, walk) <- distribute delOffices walks
                             ]
-    outw_ict <- createNodes [pl 't'  inwardGroup ["For"++center] "OutwArea" "IctDepart"
+    outw_ict <- createNodes [intTransport inwardGroup "OutwArea" "IctDepart"
                             | (center, inwardGroup) <- distribute centers theirInwGroups
                             ]
-    psort_ctrs <- createNodes [pl 'T'  ["For"++center] ["For"++center] "IctDepart" center
+    psort_ctrs <- createNodes [extTransport  inwardGroup "IctDepart" center
                             | (center, inwardGroup) <- distribute centers theirInwGroups
                             ]
 
@@ -213,21 +252,19 @@ exGraph fan = do
               origDest x y     = dest     (getNodePayload x)     ==        orig    (getNodePayload y)
               prodAcc x y      = produces (getNodePayload x) `intersects`  accepts (getNodePayload y)
 
+
 ------------------------------------------------------------
 -- aggregating and dissecting individual nodes and edges
 ------------------------------------------------------------
 
-aggNodes :: (Node,Label) -> [Node] -> LNode (CNode pl)
-aggNodes (i,lbl) = foldr addTo (nnEmpty i lbl) 
-        where
-            addTo :: Node -> LNode (CNode pl) -> LNode (CNode pl)
-            addTo nx (iAgg, NN lblAgg nsAgg) = (iAgg, NN lblAgg (nx:nsAgg))
+aggNodes :: (Node,Payload pl) -> [Node] -> LNode (CNode pl)
+aggNodes (i,pl) ns = (i, NN pl ns)
 
 disNNode :: LNode (CNode pl) -> [Node]
-disNNode  (i, NN lbl nodes) = nodes
-disNNode  (i, N0 lbl _) = error $ lbl ++ " is not an aggregate node."
+disNNode  (i, NN _ nodes) = nodes
+disNNode  (i, N0 pl) = error $ label pl ++ " is not an aggregate node."
 
-
+{-
 ------------------------------------------------------------
 -- Aggregator functions
 ------------------------------------------------------------
@@ -346,3 +383,4 @@ draw graph = do
     writeFile "xxx.dot" (graphviz' g)
     createProcess $ shell $ dot ++ " -T " ++ format ++  options  ++ "xxx.dot  > xxx." ++ format
 
+-}
