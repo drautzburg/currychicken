@@ -91,7 +91,7 @@ createNode payload = do
 createNodes :: [Payload pl] -> State Int [LNode (CNode pl)]
 createNodes = mapM createNode
 
-
+evalState0  gr = evalState gr 0
 ------------------------------------------------------------
 -- Connecting Edges
 ------------------------------------------------------------
@@ -156,9 +156,7 @@ splitIn n xs
              | otherwise    = take piece xs : splitIn (n-1) (drop piece xs)
              where
                  len   = length xs
-                 piece =  ceiling $ (fromIntegral len ::Double)/ fromIntegral n
-
-
+                 piece =  ceiling $ (fromIntegral len :: Double)/ fromIntegral n
 
 
 
@@ -234,24 +232,21 @@ exGraph fan = do
                 ++ inw_seq
                 ++ seq_dept
                 ++ ict_inw
-        edges = connectAll nodes (\x y -> origDest x y
-                                          &&
-                                          prodAcc x y 
-                                 )
+        edges = connectAll nodes (
+          \x y -> dest     (getNodePayload x)     ==        orig    (getNodePayload y)
+                  &&
+                  produces (getNodePayload x) `intersects`  accepts (getNodePayload y)
+          )
 
 
     return $ mkGraph nodes edges
           where
               named :: Int -> String -> [String]
               named n s = [s ++ show x | x <- [1..n]]
-
+              intersects s1 s2 = intersect s1 s2 /= []
+              
               -- associate groups of ys with xs
               distribute xs ys = zip xs (splitIn (length xs) ys)
-
-              intersects s1 s2 = intersect s1 s2 /= []
-              origDest x y     = dest     (getNodePayload x)     ==        orig    (getNodePayload y)
-              prodAcc x y      = produces (getNodePayload x) `intersects`  accepts (getNodePayload y)
-
 
 ------------------------------------------------------------
 -- aggregating and dissecting individual nodes and edges
