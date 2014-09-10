@@ -73,23 +73,16 @@ getNodePayload (id, n) = getPayload n
 ------------------------------------------------------------
 -- Unique Node IDs
 ------------------------------------------------------------
+type NodePool pl = (Node, [LNode (CNode pl)])
 
-nextval :: State Int Int
-nextval = do
-    id <- get
-    put (id+1)
-    return id
-
-
-createNode :: (Payload pl) -> State Int (LNode (CNode pl))
+createNode :: (Payload pl) -> State (NodePool pl) ()
 createNode payload = do
-    id <- nextval
-    return  $ n0 id payload
+    (id, ns) <- get
+    put (id+1, (n0 id payload):ns)
+    return ()
 
-
-
-createNodes :: [Payload pl] -> State Int [LNode (CNode pl)]
-createNodes = mapM createNode
+createNodes :: [Payload pl] -> State (NodePool pl) ()
+createNodes = mapM_ createNode 
 
 evalState0  gr = evalState gr 0
 ------------------------------------------------------------
@@ -143,12 +136,6 @@ pl t a p o d = let pl = Expl{
 
 nullPayload = pl '-' [] [] "" ""
 
-extTransport products orig dest        = pl 'T' products products orig dest
-intTransport products orig dest        = pl 't' products products orig dest
-unpack       accepts produces location = pl 'U' accepts produces location location
-outwSort     accepts produces location = pl 'O' accepts produces location location
-inwSort      accepts produces location = pl 'I' accepts produces location location
-seqSort      accepts produces location = pl 'S' accepts produces location location
 
 splitIn :: Int -> [a] -> [[a]]
 splitIn n xs 
@@ -158,9 +145,9 @@ splitIn n xs
                  len   = length xs
                  piece =  ceiling $ (fromIntegral len :: Double)/ fromIntegral n
 
+exGraph :: Int -> State (NodePool ExPayload) (CGraph ExPayload)
+          
 
-
-exGraph :: Int -> State Int (CGraph ExPayload)
 exGraph fan = do   
     let collOffices       = (2*fan)  `named` "CO"
         centers           = (2*fan)  `named` "CE"
@@ -171,82 +158,80 @@ exGraph fan = do
         walks             = (16*fan) `named` "WK"
         delOffices        = (6*fan)  `named` "DO"
 
-    coll_usort  <- createNodes [extTransport  ["From"++collOffice] collOffice "CollArrival" 
-                            | collOffice <- collOffices
-                            ]
-    unpUsort <- createNodes [ unpack ["From"++collOffice] ["From"++collOffice++"Unp"] "CollArrival" 
-                            | collOffice <- collOffices
-                            ]
-    collArr_outw <- createNodes [intTransport ["From"++collOffice++"Unp"] "CollArrival" "OutwArea"
-                            | collOffice <- collOffices
-                            ]
-    ctrs_psort  <- createNodes [extTransport ["From"++center] center "IctArrival"
-                            | center <- centers
-                            ]
-    unpPsort <- createNodes [unpack  ["From"++center] myInwGroups "IctArrival"
-                            | center <- centers
-                            ]
-    ict_inw <- createNodes [intTransport [inwGroup] "IctArrival" "InwArea"
-                            | inwGroup <- myInwGroups
-                            ]
-    srtOutw  <- createNodes [outwSort ["From"++collOffice++"Unp"] (myInwGroups++theirInwGroups) "OutwArea"
-                            | x<-outwRuns, collOffice <- collOffices
-                            ]
-    outw_inw <- createNodes [intTransport  [inwGroup] "OutwArea" "InwArea"
-                            | inwGroup <- myInwGroups
-                            ]
-    srtInw   <- createNodes [inwSort [inwardGroup]  seqGroup "InwArea" 
-                            |(inwardGroup, seqGroup) <- distribute myInwGroups sequenceRuns
-                            ]
-    inw_seq   <- createNodes [intTransport  [seqGroup] "InwArea" "SeqArea"
-                            |seqGroup <- sequenceRuns
-                            ]
-    srtSeq   <- createNodes [seqSort  [sequenceRun] walk "SeqArea"
-                            | (sequenceRun, walk) <- distribute sequenceRuns walks
-                            ]
-    seq_dept <- createNodes [intTransport [walk] "SeqArea" "DoDeparture"
-                            | walk <- walks
-                            ]
-    seq_dos   <- createNodes [extTransport walk  "DoDeparture" delOffice
-                            | (delOffice, walk) <- distribute delOffices walks
-                            ]
-    outw_ict <- createNodes [intTransport inwardGroup "OutwArea" "IctDepart"
-                            | (center, inwardGroup) <- distribute centers theirInwGroups
-                            ]
-    psort_ctrs <- createNodes [extTransport  inwardGroup "IctDepart" center
-                            | (center, inwardGroup) <- distribute centers theirInwGroups
-                            ]
+    createNodes [extTransport  ["From"++collOffice] collOffice "CollArrival" 
+                 | collOffice <- collOffices
+                ]
+    createNodes [unpack ["From"++collOffice] ["From"++collOffice++"Unp"] "CollArrival" 
+                 | collOffice <- collOffices]
 
-    let nodes = coll_usort
-                ++ unpUsort
-                ++ collArr_outw
-                ++ ctrs_psort
-                ++ unpPsort
-                ++ srtOutw
-                ++ outw_ict
-                ++ psort_ctrs
-                ++ srtInw
-                ++ srtSeq
-                ++ seq_dos
-                ++ outw_inw
-                ++ inw_seq
-                ++ seq_dept
-                ++ ict_inw
-        edges = connectAll nodes (
-          \x y -> dest     (getNodePayload x)     ==        orig    (getNodePayload y)
-                  &&
-                  produces (getNodePayload x) `intersects`  accepts (getNodePayload y)
-          )
+    createNodes [intTransport ["From"++collOffice++"Unp"] "CollArrival" "OutwArea"
+                 | collOffice <- collOffices
+                ]
+    createNodes [extTransport ["From"++center] center "IctArrival"
+                 | center <- centers
+                            ]
+    createNodes [unpack  ["From"++center] myInwGroups "IctArrival"
+                 | center <- centers
+                ]
+    createNodes [intTransport [inwGroup] "IctArrival" "InwArea"
+                 | inwGroup <- myInwGroups
+                ]
+    createNodes [outwSort ["From"++collOffice++"Unp"] (myInwGroups++theirInwGroups) "OutwArea"
+                 | x<-outwRuns, collOffice <- collOffices
+                ]
+    createNodes [intTransport  [inwGroup] "OutwArea" "InwArea"
+                 | inwGroup <- myInwGroups
+                ]
+    createNodes [inwSort [inwardGroup]  seqGroup "InwArea" 
+                 |(inwardGroup, seqGroup) <- distribute myInwGroups sequenceRuns
+                ]
+    createNodes [intTransport  [seqGroup] "InwArea" "SeqArea"
+                 |seqGroup <- sequenceRuns
+                ]
+    createNodes [seqSort  [sequenceRun] walk "SeqArea"
+                 | (sequenceRun, walk) <- distribute sequenceRuns walks
+                ]
+    createNodes [intTransport [walk] "SeqArea" "DoDeparture"
+                 | walk <- walks
+                ]
+    createNodes [extTransport walk  "DoDeparture" delOffice
+                 | (delOffice, walk) <- distribute delOffices walks
+                ]
+    createNodes [intTransport inwardGroup "OutwArea" "IctDepart"
+                 | (center, inwardGroup) <- distribute centers theirInwGroups
+                ]
+    createNodes [extTransport  inwardGroup "IctDepart" center
+                 | (center, inwardGroup) <- distribute centers theirInwGroups
+                ]
+
+    (i,nodes) <- get
+    let
+        edges = connectAll nodes connectible
 
 
     return $ mkGraph nodes edges
-          where
-              named :: Int -> String -> [String]
-              named n s = [s ++ show x | x <- [1..n]]
-              intersects s1 s2 = intersect s1 s2 /= []
+        where
+            named :: Int -> String -> [String]
+            named n s = [s ++ show x | x <- [1..n]]
               
-              -- associate groups of ys with xs
-              distribute xs ys = zip xs (splitIn (length xs) ys)
+            -- associate groups of ys with xs
+            distribute xs ys = zip xs (splitIn (length xs) ys)
+
+            -- some shorthand commands
+            extTransport products orig dest        = pl 'T' products products orig dest
+            intTransport products orig dest        = pl 't' products products orig dest
+            unpack       accepts produces location = pl 'U' accepts produces location location
+            outwSort     accepts produces location = pl 'O' accepts produces location location
+            inwSort      accepts produces location = pl 'I' accepts produces location location
+            seqSort      accepts produces location = pl 'S' accepts produces location location
+
+            -- can two nodes be connected
+            intersects s1 s2 = intersect s1 s2 /= []
+            connectible x y = let plx = getNodePayload x
+                                  ply = getNodePayload y
+                              in
+                                  dest plx == orig ply && produces plx `intersects` accepts ply
+
 
 ------------------------------------------------------------
 -- aggregating and dissecting individual nodes and edges
@@ -365,7 +350,7 @@ exGraph3 fan = foldr groupNodes' gr nodeGroups
 evalState0  gr = evalState gr 0
     
 
-
+-}
 ------------------------------------------------------------
 -- Drawing
 ------------------------------------------------------------
@@ -378,4 +363,4 @@ draw graph = do
     writeFile "xxx.dot" (graphviz' g)
     createProcess $ shell $ dot ++ " -T " ++ format ++  options  ++ "xxx.dot  > xxx." ++ format
 
--}
+
