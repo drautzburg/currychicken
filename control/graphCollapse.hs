@@ -1,4 +1,5 @@
 import Data.List
+import GHC.Exts
 import Data.Function
 import qualified Data.Map as M
 import qualified Data.List.Ordered as O
@@ -24,11 +25,11 @@ instance Show (Payload a)
 
 
 
-data CNode pl = N0 (Payload pl) | NN (Payload pl) [Node]  deriving (Eq)
+data CNode pl = N0 (Payload pl) | NN (Payload ())   deriving (Eq)
 instance Show (CNode pl)
         where 
-            show (N0 pl)    = show pl
-            show (NN pl ns) = show pl -- ++":"++ (show ns) 
+            show (N0 pl) = show pl
+            show (NN pl) = show pl -- ++":"++ (show ns) 
 
 
 data CEdge = E0 Label deriving (Eq)
@@ -61,13 +62,8 @@ e0 i j = (i,j, E0 lbl)
             lbl = show i ++ "->" ++ show j
 
 
-getPayload :: CNode pl -> pl
-getPayload (N0 pl)   = payload pl
-getPayload (NN pl _) = payload pl
-
-
 getNodePayload :: LNode (CNode pl) -> pl
-getNodePayload (id, n) = getPayload n
+getNodePayload (id, N0 pl) = payload pl
 
 
 ------------------------------------------------------------
@@ -132,9 +128,6 @@ pl t a p o d = let pl = Expl{
                    PL { label   = show pl,
                         payload = pl
                       }
-
-
-nullPayload = pl '-' [] [] "" ""
 
 
 splitIn :: Int -> [a] -> [[a]]
@@ -237,60 +230,34 @@ exGraph fan = do
 -- aggregating and dissecting individual nodes and edges
 ------------------------------------------------------------
 
-aggNodes :: (Node,Payload pl) -> [Node] -> LNode (CNode pl)
-aggNodes (i,pl) ns = (i, NN pl ns)
 
-disNNode :: LNode (CNode pl) -> [Node]
-disNNode  (i, NN _ nodes) = nodes
-disNNode  (i, N0 pl) = error $ label pl ++ " is not an aggregate node."
 
-{-
 ------------------------------------------------------------
 -- Aggregator functions
 ------------------------------------------------------------
 
-type Aggregator pl = LNode (CNode pl) -> LNode (CNode pl)
+type Aggregator pl = LNode (CNode pl) -> Label
 
 byFrom :: Aggregator ExPayload
-byFrom (n, N0 lbl pl) = (n, N0 lbl' pl')
-        where
-            pl'  = nullPayload {orig = orig pl}
-            lbl' = "From " ++ orig pl
+byFrom (n, N0 (PL label pl)) = orig pl
 
 byFromTo :: Aggregator ExPayload
-byFromTo (n, N0 lbl pl) = (n, N0 lbl' pl')
-        where
-            pl'  = nullPayload {orig = orig pl, dest = dest pl}
-            lbl' = orig pl ++ "->" ++ dest pl
+byFromTo (n, N0 (PL lbl pl)) = orig pl ++ "->" ++ dest pl
+
 
 byFromToTyped :: Aggregator ExPayload
-byFromToTyped (n, N0 lbl pl) = (n, N0 lbl' pl')
-        where
-            pl'  = nullPayload {orig = orig', dest = dest'}
-            lbl' = [pType pl] ++ ":" ++ (if orig' == dest'
-                                         then orig'
-                                         else orig' ++ "->" ++ dest'
-                                        )
-            orig' = typed $ orig pl
-            dest' = typed $ dest pl
-            typed s = case take 2 s of
-              "CE" -> "Centers"
-              "CO" -> "Coll"
-              "DO" -> "Delivery"
-              _    -> s
-
-
-samePayload (_, N0 _ pl1) (_, N0 _ pl2) = pl1 == pl2
-
--- xxx ugly
-aggregate :: (Eq pl, Ord pl) => CGraph pl -> Aggregator pl -> [(Label, [Node])]
-aggregate gr aggf = map rmPayload $ combine triplets
+byFromToTyped (n, N0 (PL lbl pl)) = lbl'
   where
-    triplets = [((lbl, pl),[n]) | (n, N0 lbl pl) <- map aggf $ labNodes gr]
-    rmPayload :: ((Label, pl),[Node]) -> (Label, [Node])
-    rmPayload ((lbl,pl),ns) = (lbl, ns)
-    combine :: Ord pl => [((Label,pl),[Node])] -> [((Label,pl),[Node])]
-    combine = M.toList . (M.fromListWith (++))
+    lbl' = [pType pl] ++ ":" ++ (if orig pl == dest pl
+                                 then orig pl
+                                 else orig pl ++ "->" ++ dest pl
+                                )
+
+aggregate :: (Eq pl, Ord pl) => CGraph pl -> Aggregator pl -> [(Label, [Node])]
+aggregate gr aggf = map relabel $ groups
+  where
+    groups     = groupWith aggf (labNodes gr)
+    relabel ns = (aggf (head ns), map fst ns)
 
 
 ------------------------------------------------------------
@@ -300,6 +267,7 @@ aggregate gr aggf = map rmPayload $ combine triplets
 
 -- Helpers
 
+uniq :: (Eq a, Ord a) => [a]->[a]
 uniq = nub . sort
 a `without` b = O.minus (sort a)  (sort b)
 
@@ -310,12 +278,11 @@ setDest n (i,j) = (i,n)
 type GraphTransform pl = CGraph pl -> CGraph pl
 
 
-groupNodes :: State Int (CGraph pl) -> Label -> [Node] ->  State Int (CGraph pl)
-groupNodes graph label ids  =  do
-    gr    <- graph
-    newId <- nextval 
-    let newNode     = aggNodes (newId,label) ids
-        addNewNode  = insNode newNode
+groupNodes :: State Int (CGraph pl) -> (Label,[Node]) ->  State Int (CGraph pl)
+groupNodes graph (lbl,ids)  =  do
+    gr     <- graph
+    (id,_) <- get
+    let addNewNode  = createNode (PL {label=lbl})
         delOldNodes = delNodes ids     :: GraphTransform pl
 
         -- Now the edges:
@@ -325,8 +292,8 @@ groupNodes graph label ids  =  do
         oldEdgesWithin = [ (i,j) | (i,j) <- oldEdges, i `elem` ids, j `elem` ids]
 
 
-        newEdges       = uniq $ map (setDest newId)  (oldEdgesTo   \\ oldEdgesWithin) ++ 
-                                map (setOrig newId)  (oldEdgesFrom \\ oldEdgesWithin)
+        newEdges       = uniq $ map (setDest id+1)  (oldEdgesTo   \\ oldEdgesWithin) ++ 
+                                map (setOrig id+1)  (oldEdgesFrom \\ oldEdgesWithin)
         delOldEdges    = delEdges oldEdges  :: GraphTransform pl
         -- beware: inserting edge between nodes wich do not exists causes "Irrefutable pattern failed"
         addNewEdges    = insEdges $ map (uncurry e0) newEdges                :: GraphTransform pl
@@ -334,7 +301,7 @@ groupNodes graph label ids  =  do
     return $ (addNewEdges . delOldEdges . addNewNode . delOldNodes) gr
 
 
-
+{-
 exGraph2 :: State Int (CGraph ExPayload)
 exGraph2 = groupNodes (exGraph 1) "foo"  [0,1,2,3,4,12,13,14,15] 
 
@@ -347,10 +314,10 @@ exGraph3 fan = foldr groupNodes' gr nodeGroups
             nodeGroups = aggregate (evalState0 gr) byFromToTyped
             groupNodes' (lbl, ns) g= groupNodes g lbl ns
 
-evalState0  gr = evalState gr 0
-    
 
--}
+-}    
+
+
 ------------------------------------------------------------
 -- Drawing
 ------------------------------------------------------------
