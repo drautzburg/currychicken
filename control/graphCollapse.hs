@@ -210,7 +210,7 @@ type Aggregator pl = LNode (CNode pl) -> Label
 byFrom :: Aggregator ExPayload
 byFrom (n, N0 pl) = orig pl
 
-{-
+
 byFromTo :: Aggregator ExPayload
 byFromTo (n, N0 pl) = orig pl ++ "->" ++ dest pl
 
@@ -222,7 +222,7 @@ byFromToTyped (n, N0 pl) = lbl'
                                  then orig pl
                                  else orig pl ++ "->" ++ dest pl
                                 )
--}
+
 
 aggregate :: (Eq pl, Ord pl) => CGraph pl -> Aggregator pl -> [(Label, [Node])]
 aggregate gr aggf = map relabel $ groups
@@ -262,45 +262,32 @@ groupNodes (lbl,ids) gr =
                                 map (setDest id)  (oldEdgesTo   \\ oldEdgesWithin) ++ 
                                 map (setOrig id)  (oldEdgesFrom \\ oldEdgesWithin)
   in
-   insNode (id, (NN lbl)) gr
-   >>> delNodes ids
-   >>> delEdges oldEdges
-   >>> insEdges newEdges
-
-{-
-exGraph2 :: DynGraph gr => State (Node, gr (CNode ExPayload) CEdge) Int
-exGraph2 = do
-    exGraph 1 
-    groupNodes ("foo",  [0,1,2,3,4,12,13,14,15])
+     insEdges newEdges $ delEdges oldEdges $ (delNodes ids) $ insNode (id, (NN lbl)) gr
 
 
 
-exGraph3 :: DynGraph gr => Int -> State (Node, gr (CNode ExPayload) CEdge) Int
-exGraph3 fan = do -- foldr groupNodes' gr nodeGroups
-    exGraph fan
-    (i, gr) <- get
-    let x = gr :: P.Gr (CNode ExPayload) CEdge
---    let nodeGroups = aggregate gr byFromToTyped -- :: [(Label,[Node])]
---    groupNodes nodeGroups
-    return i
+exGraph2 :: P.Gr (CNode ExPayload) CEdge
+exGraph2 =
+  let gr = (exGraph 1) cempty
+  in groupNodes ("foo",  [0,1,2,3,4,12,13,14,15]) gr
+    
 
+exGraph3 :: Int -> P.Gr (CNode ExPayload) CEdge
+exGraph3 fan =
+  let gr = (exGraph fan) empty
+  in foldr groupNodes gr (aggregate gr byFromToTyped)
 
--}
-
-
-buildGraph gr = gr empty
 ------------------------------------------------------------
 -- Drawing
 ------------------------------------------------------------
 --draw :: (DynGraph gr, Show pl)  => GraphTransform gr pl -> IO ()
-draw grt = do
-    let g = grt cempty
+draw gr = do
+    let 
         dot = "D:/Software/Graphviz/bin/dot"
 --        dot = "dot"
         format = "eps"
         options = " -Gnodesep=0.1  -Nstyle=filled,rounded -Nshape=box -Nfontname=Arial -Efontname=Arial -Epenwidth=3 "
-    writeFile "xxx.dot" (graphviz' g)
+    writeFile "xxx.dot" (graphviz' gr)
     createProcess $ shell $ dot ++ " -T " ++ format ++  options  ++ "xxx.dot  > xxx." ++ format
     return ()
-
 
