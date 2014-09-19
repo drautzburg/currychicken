@@ -30,22 +30,16 @@ instance Show CEdge
             show (E0 s) = "" -- s
 
 
-type CGraph a = P.Gr (CNode a) CEdge
+type CGraph pl = P.Gr (CNode pl) CEdge
 
 ------------------------------------------------------------
 -- Creating simple Nodes and Eges
 ------------------------------------------------------------
 
 -- | Node is actually just an Id (i.e. an Int)
---n0 :: (Show pl) => Node -> (Payload a) -> LNode (CNode pl)
+
 n0 :: Int -> pl -> LNode (CNode pl)
 n0 i pl = (i, N0 pl)
-
-
-{-
-nnEmpty :: Node -> Label -> LNode (CNode pl)
-nnEmpty i lbl = (i, NN lbl [])
--}
 
 
 e0 :: Node -> Node -> LEdge CEdge
@@ -59,64 +53,32 @@ getNodePayload (id, N0 pl) = pl
 
 
 ------------------------------------------------------------
--- Unique Node IDs
-------------------------------------------------------------
-type NodePool pl = (Node, [LNode (CNode pl)])
-
-
-createNode :: DynGraph gr => CNode pl -> State (Node, gr (CNode pl) e) Int
-createNode cn = do
-    (id, gr) <- get
-    let id' = id+1
-        newNode = (id', cn)
-    put (id', insNode newNode gr)
-    return id'
-
-createNodes :: DynGraph gr => [CNode pl] -> State (Node, gr (CNode pl) e) ()
-createNodes = mapM_ createNode
-
-dropNode :: DynGraph gr => Node -> State (Node, gr (CNode pl) e) Int
-dropNode n = do
-    (id, gr) <- get
-    put (id, delNode n gr)
-    return id
-
-dropNodes :: DynGraph gr => [Node] -> State (Node, gr (CNode pl) e) ()
-dropNodes = mapM_ dropNode
-
-createEdge :: DynGraph gr => LEdge e -> State (Node, gr (CNode pl) e) Int
-createEdge e = do
-    (id, gr) <- get
-    put (id, insEdge e gr)
-    return id
-
-createEdges ::DynGraph gr => [LEdge e] -> State (Node, gr (CNode pl) e) ()
-createEdges = mapM_ createEdge
-
-dropEdge :: DynGraph gr => Edge -> State (Node, gr (CNode pl) e) Int
-dropEdge e = do
-    (id, gr) <- get
-    put (id, delEdge e gr)
-    return id
-
-dropEdges :: DynGraph gr => [Edge] -> State (Node, gr (CNode pl) e) ()
-dropEdges = mapM_ dropEdge
-
-
-evalState0  gr = evalState gr 0
-------------------------------------------------------------
--- Connecting Edges
+-- Graph manipulation
 ------------------------------------------------------------
 
-newEdge ((i,_), (j,_)) = e0 i j
+type GraphTransform gr pl = gr (CNode pl) CEdge -> gr (CNode pl) CEdge
+
+
+createNodes :: DynGraph gr => [CNode pl] -> GraphTransform gr pl
+createNodes cns gr = insNodes nodes gr
+        where
+            nodes = zip (newNodes (length cns) gr) cns
+
+createNode :: DynGraph gr => CNode pl -> GraphTransform gr pl
+createNode cn = createNodes [cn]
+
+dropNodes :: DynGraph gr => [Node] -> GraphTransform gr pl
+dropNodes = undefined
+
 
 
 type NodeEq pl = LNode (CNode pl) -> LNode (CNode pl) -> Bool
 
--- | Connect all nodes in nodes which satisfy an equality criterion
-connectAll :: [LNode (CNode pl)] -> NodeEq pl-> [LEdge CEdge]
-connectAll nodes eqf = [newEdge (from, to)| from<-nodes, to<-nodes, eqf from to]
-
+connectAll :: DynGraph gr => NodeEq pl-> GraphTransform gr pl
+connectAll eqf gr = insEdges [edge from to| from<-nodes, to<-nodes, eqf from to] gr
+        where
+            nodes            = labNodes gr
+            edge (i,_) (j,_) = e0 i j
 
 ------------------------------------------------------------
 -- Example Graph
@@ -152,9 +114,7 @@ splitIn n xs
                  len   = length xs
                  piece =  ceiling $ (fromIntegral len :: Double)/ fromIntegral n
 
---exGraph :: Int -> State (NodePool ExPayload) (CGraph ExPayload)
-          
-exGraph  :: DynGraph gr => Int -> State (Node, gr (CNode ExPayload) CEdge) Int
+exGraph :: DynGraph gr => Int -> GraphTransform gr ExPayload
 exGraph fan = do   
     let collOffices       = (2*fan)  `named` "CO"
         centers           = (2*fan)  `named` "CE"
@@ -167,7 +127,7 @@ exGraph fan = do
 
     createNodes [extTransport  ["From"++collOffice] collOffice "CollArrival" 
                  | collOffice <- collOffices
-                ]
+                ] 
     createNodes [unpack ["From"++collOffice] ["From"++collOffice++"Unp"] "CollArrival" 
                  | collOffice <- collOffices]
 
@@ -211,15 +171,11 @@ exGraph fan = do
                  | (center, inwardGroup) <- distribute centers theirInwGroups
                 ]
 
-    (i,gr) <- get
-    let edges     = connectAll (labNodes gr) connectible 
-        grEdged   = foldr insEdge gr edges 
-    put (i, grEdged)
+    connectAll connectible 
 
 
-    -- return $ mkGraph nodes edges
-    return i
         where
+
             named :: Int -> String -> [String]
             named n s = [s ++ show x | x <- [1..n]]
               
@@ -234,14 +190,14 @@ exGraph fan = do
             inwSort      accepts produces location = expl 'I' accepts produces location location
             seqSort      accepts produces location = expl 'S' accepts produces location location
 
-            -- can two nodes be connected
+            -- can two nodes be connected?
             intersects s1 s2 = intersect s1 s2 /= []
             connectible x y = let plx = getNodePayload x
                                   ply = getNodePayload y
                               in
                                   dest plx == orig ply && produces plx `intersects` accepts ply
 
-
+{-
 ------------------------------------------------------------
 -- aggregating and dissecting individual nodes and edges
 ------------------------------------------------------------
@@ -319,7 +275,6 @@ exGraph2 = do
 
 
 
-{-
 exGraph3 :: DynGraph gr => Int -> State (Node, gr (CNode ExPayload) CEdge) Int
 exGraph3 fan = do -- foldr groupNodes' gr nodeGroups
     exGraph fan
@@ -328,21 +283,25 @@ exGraph3 fan = do -- foldr groupNodes' gr nodeGroups
 --    let nodeGroups = aggregate gr byFromToTyped -- :: [(Label,[Node])]
 --    groupNodes nodeGroups
     return i
+
+
 -}
 
 
-
-
+--buildGraph :: Graph gr => (gr a b -> gr a b) -> gr a b
+buildGraph gr = gr empty
 ------------------------------------------------------------
 -- Drawing
 ------------------------------------------------------------
-draw graph = do
-    let g = evalState0 graph
+draw :: (DynGraph gr, Show pl)  => GraphTransform gr pl -> IO ()
+draw gr = do
+    let g = buildGraph gr
 --        dot = "D:/Software/Graphviz/bin/dot"
         dot = "dot"
         format = "eps"
         options = " -Gnodesep=0.1  -Nstyle=filled,rounded -Nshape=box -Nfontname=Arial -Efontname=Arial -Epenwidth=3 "
     writeFile "xxx.dot" (graphviz' g)
     createProcess $ shell $ dot ++ " -T " ++ format ++  options  ++ "xxx.dot  > xxx." ++ format
+    return ()
 
 
