@@ -11,6 +11,7 @@ import Control.Monad.State
 import Data.Graph.Inductive.Graph 
 import Data.Graph.Inductive.Graphviz
 import qualified Data.Graph.Inductive.PatriciaTree as P
+import Control.Arrow
 
 trc s x = trace (s ++ ":" ++show x) x
 
@@ -31,6 +32,8 @@ instance Show CEdge
 
 
 type CGraph pl = P.Gr (CNode pl) CEdge
+cempty::P.Gr(CNode pl) CEdge
+cempty = empty
 
 ------------------------------------------------------------
 -- Creating simple Nodes and Eges
@@ -93,11 +96,12 @@ data ExPayload = Expl {
 } deriving (Eq, Ord)
 
 instance Show ExPayload where
-        show pl = trc "show" $ " " ++ [pType pl] ++ "\\n" ++ (orig pl) ++ "\\n" ++ (dest pl)
+        show pl = [pType pl] ++ "\\n" ++ if (orig pl == dest pl)
+                                         then (orig pl)
+                                         else (orig pl)++"\\n" ++ (dest pl)
 
 
 expl  :: Char -> [String] -> [String] -> String -> String -> CNode ExPayload
-
 expl t a p o d = N0 $ Expl{
                    pType    = t,
                    accepts  = a,
@@ -113,67 +117,65 @@ splitIn n xs
              where
                  len   = length xs
                  piece =  ceiling $ (fromIntegral len :: Double)/ fromIntegral n
+  
 
 exGraph :: DynGraph gr => Int -> GraphTransform gr ExPayload
-exGraph fan = do   
-    let collOffices       = (2*fan)  `named` "CO"
-        centers           = (2*fan)  `named` "CE"
-        myInwGroups       = (2*fan)  `named` "MIG"
-        theirInwGroups    = (3*fan)  `named` "TIG"
-        outwRuns          = fan      `named` "OR"
-        sequenceRuns      = (4*fan)  `named` "SQ"
-        walks             = (16*fan) `named` "WK"
-        delOffices        = (6*fan)  `named` "DO"
-
+exGraph fan = 
+  let collOffices       = (2*fan)  `named` "CO"
+      centers           = (2*fan)  `named` "CE"
+      myInwGroups       = (2*fan)  `named` "MIG"
+      theirInwGroups    = (3*fan)  `named` "TIG"
+      outwRuns          = fan      `named` "OR"
+      sequenceRuns      = (4*fan)  `named` "SQ"
+      walks             = (16*fan) `named` "WK"
+      delOffices        = (6*fan)  `named` "DO"
+  in
     createNodes [extTransport  ["From"++collOffice] collOffice "CollArrival" 
-                 | collOffice <- collOffices
-                ] 
+                 | collOffice <- collOffices]
+    >>>
     createNodes [unpack ["From"++collOffice] ["From"++collOffice++"Unp"] "CollArrival" 
                  | collOffice <- collOffices]
-
+    >>>
     createNodes [intTransport ["From"++collOffice++"Unp"] "CollArrival" "OutwArea"
-                 | collOffice <- collOffices
-                ]
+                 | collOffice <- collOffices]
+    >>>
     createNodes [extTransport ["From"++center] center "IctArrival"
-                 | center <- centers
-                            ]
+                 | center <- centers]
+    >>>
     createNodes [unpack  ["From"++center] myInwGroups "IctArrival"
-                 | center <- centers
-                ]
+                 | center <- centers]
+    >>>
     createNodes [intTransport [inwGroup] "IctArrival" "InwArea"
-                 | inwGroup <- myInwGroups
-                ]
+                 | inwGroup <- myInwGroups]
+    >>>
     createNodes [outwSort ["From"++collOffice++"Unp"] (myInwGroups++theirInwGroups) "OutwArea"
-                 | x<-outwRuns, collOffice <- collOffices
-                ]
+                 | x<-outwRuns, collOffice <- collOffices]
+    >>>
     createNodes [intTransport  [inwGroup] "OutwArea" "InwArea"
-                 | inwGroup <- myInwGroups
-                ]
+                 | inwGroup <- myInwGroups]
+    >>>
     createNodes [inwSort [inwardGroup]  seqGroup "InwArea" 
-                 |(inwardGroup, seqGroup) <- distribute myInwGroups sequenceRuns
-                ]
+                 |(inwardGroup, seqGroup) <- distribute myInwGroups sequenceRuns]
+    >>>
     createNodes [intTransport  [seqGroup] "InwArea" "SeqArea"
-                 |seqGroup <- sequenceRuns
-                ]
+                 |seqGroup <- sequenceRuns]
+    >>>
     createNodes [seqSort  [sequenceRun] walk "SeqArea"
-                 | (sequenceRun, walk) <- distribute sequenceRuns walks
-                ]
+                 | (sequenceRun, walk) <- distribute sequenceRuns walks]
+    >>>
     createNodes [intTransport [walk] "SeqArea" "DoDeparture"
-                 | walk <- walks
-                ]
+                 | walk <- walks]
+    >>>
     createNodes [extTransport walk  "DoDeparture" delOffice
-                 | (delOffice, walk) <- distribute delOffices walks
-                ]
+                 | (delOffice, walk) <- distribute delOffices walks]
+    >>>
     createNodes [intTransport inwardGroup "OutwArea" "IctDepart"
-                 | (center, inwardGroup) <- distribute centers theirInwGroups
-                ]
+                 | (center, inwardGroup) <- distribute centers theirInwGroups]
+    >>>
     createNodes [extTransport  inwardGroup "IctDepart" center
-                 | (center, inwardGroup) <- distribute centers theirInwGroups
-                ]
-
+                 | (center, inwardGroup) <- distribute centers theirInwGroups]
+    >>>
     connectAll connectible 
-
-
         where
 
             named :: Int -> String -> [String]
@@ -197,11 +199,6 @@ exGraph fan = do
                               in
                                   dest plx == orig ply && produces plx `intersects` accepts ply
 
-{-
-------------------------------------------------------------
--- aggregating and dissecting individual nodes and edges
-------------------------------------------------------------
-
 
 
 ------------------------------------------------------------
@@ -213,6 +210,7 @@ type Aggregator pl = LNode (CNode pl) -> Label
 byFrom :: Aggregator ExPayload
 byFrom (n, N0 pl) = orig pl
 
+{-
 byFromTo :: Aggregator ExPayload
 byFromTo (n, N0 pl) = orig pl ++ "->" ++ dest pl
 
@@ -224,13 +222,14 @@ byFromToTyped (n, N0 pl) = lbl'
                                  then orig pl
                                  else orig pl ++ "->" ++ dest pl
                                 )
+-}
 
--- xxx ugly
 aggregate :: (Eq pl, Ord pl) => CGraph pl -> Aggregator pl -> [(Label, [Node])]
 aggregate gr aggf = map relabel $ groups
   where
     groups     = groupWith aggf (labNodes gr)
     relabel ns = (aggf (head ns), map fst ns)
+
 
 ------------------------------------------------------------
 -- Collapsing and expanding graphs
@@ -251,23 +250,24 @@ setDest n (i,j) = (i,n)
 
 
 
-groupNodes :: DynGraph gr => (Label,[Node])  -> State (Node, gr (CNode ExPayload) CEdge) Int
-groupNodes (lbl,ids)  =  do
-    aggNode <- createNode (NN lbl)
-    (id',gr) <- get
-    let oldEdgesTo     = [(toOld, old)   | old <- ids, toOld <- pre gr old] 
-        oldEdgesFrom   = [(old, fromOld) | old <- ids, fromOld <- suc gr old] 
-        oldEdges       = oldEdgesTo ++ oldEdgesFrom
-        oldEdgesWithin = [ (i,j) | (i,j) <- oldEdges, i `elem` ids, j `elem` ids]
-        newEdges       = map (uncurry e0) $ uniq $ 
-                                map (setDest id')  (oldEdgesTo   \\ oldEdgesWithin) ++ 
-                                map (setOrig id')  (oldEdgesFrom \\ oldEdgesWithin) 
-    dropNodes ids
-    dropEdges oldEdges
-    createEdges newEdges
-    return id'
+groupNodes :: DynGraph gr => (Label,[Node])  -> GraphTransform gr pl
+groupNodes (lbl,ids) gr =
+  let
+    id = head $ newNodes 1 gr
+    oldEdgesTo     = [(toOld, old)   | old <- ids, toOld <- pre gr old] 
+    oldEdgesFrom   = [(old, fromOld) | old <- ids, fromOld <- suc gr old] 
+    oldEdges       = oldEdgesTo ++ oldEdgesFrom
+    oldEdgesWithin = [ (i,j) | (i,j) <- oldEdges, i `elem` ids, j `elem` ids]
+    newEdges       = map (uncurry e0) $ uniq $ 
+                                map (setDest id)  (oldEdgesTo   \\ oldEdgesWithin) ++ 
+                                map (setOrig id)  (oldEdgesFrom \\ oldEdgesWithin)
+  in
+   insNode (id, (NN lbl)) gr
+   >>> delNodes ids
+   >>> delEdges oldEdges
+   >>> insEdges newEdges
 
-
+{-
 exGraph2 :: DynGraph gr => State (Node, gr (CNode ExPayload) CEdge) Int
 exGraph2 = do
     exGraph 1 
@@ -288,16 +288,15 @@ exGraph3 fan = do -- foldr groupNodes' gr nodeGroups
 -}
 
 
---buildGraph :: Graph gr => (gr a b -> gr a b) -> gr a b
 buildGraph gr = gr empty
 ------------------------------------------------------------
 -- Drawing
 ------------------------------------------------------------
-draw :: (DynGraph gr, Show pl)  => GraphTransform gr pl -> IO ()
-draw gr = do
-    let g = buildGraph gr
---        dot = "D:/Software/Graphviz/bin/dot"
-        dot = "dot"
+--draw :: (DynGraph gr, Show pl)  => GraphTransform gr pl -> IO ()
+draw grt = do
+    let g = grt cempty
+        dot = "D:/Software/Graphviz/bin/dot"
+--        dot = "dot"
         format = "eps"
         options = " -Gnodesep=0.1  -Nstyle=filled,rounded -Nshape=box -Nfontname=Arial -Efontname=Arial -Epenwidth=3 "
     writeFile "xxx.dot" (graphviz' g)
