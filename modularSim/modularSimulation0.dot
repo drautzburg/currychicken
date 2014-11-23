@@ -1,0 +1,13 @@
+digraph d {
+	subgraph store {
+		node [shape=box]
+		s1 [label="State1"]
+		s2 [label="State2"]
+	}
+	subgraph process {
+		node [shape=box, style=rounded]
+		step
+	}
+
+s1 -> step -> s2
+}
