@@ -1,0 +1,25 @@
+/dfd_store {
+        {
+          4 ne { stop } if % sanity-check number of sides
+          aload pop
+          pop pop
+          8 4 roll
+          moveto
+          lineto
+          lineto
+          lineto
+          fill
+        }
+        {
+          4 ne { stop } if % sanity-check number of sides
+          aload pop
+          pop pop
+          8 4 roll
+          moveto
+          lineto
+          moveto
+          lineto
+          stroke
+        }
+        ifelse
+} bind def
