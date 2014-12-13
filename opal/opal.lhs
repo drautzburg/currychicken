@@ -16,6 +16,7 @@
 \usepackage{color}
 \usepackage{colortbl}	
 \usepackage{pgf}
+\usepackage{pifont}
 \usepackage[framemethod=tikz]{mdframed}
 \newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
 
@@ -100,9 +101,10 @@ includes:
 
 \subsection{Definition}
 
-An |Item| is either a toplevel Item (an |ItemAt|) which is at a
-certain |Position| or it is an Item which is inside a Container, where
-the Container is an Item itself. The latter is called an |ItemIn|.
+An |Item| is either a toplevel Item which is |at| a certain |Spot| or
+it is an Item which is inside a Container, where the Container is an
+Item itself. We call \emph{where the item is} its |Location|.
+
 
 Items always belong to a |Product|. A Product is a classification of
 Items, such that Items of the same Product are usually processed in
@@ -115,18 +117,21 @@ Finally we assume every items carries an Id.
 
 \needspace{4em}
 Hence the type of an Item depends of the type of the Ids |i| , the
-type of the Products |p| and the type of the Positions |l|
-(think: \emph{location}).
+type of the Products |p| and the way we describe Spots |s|.
 
+%if False
 \begin{code}
 import Data.List
 import Data.Maybe
 \end{code}
- 
+%endif 
+
 \begin{code}
-data Item i p l = ItemAt i p l |
-                  ItemIn i p i
-                     deriving (Eq,Show)
+data Location i s = At s | In i
+                    deriving (Eq, Show)
+
+data Item i p s = Item i p (Location i s)
+                  deriving (Eq,Show)
 \end{code}
 
 \subsection{Operations}
@@ -136,55 +141,46 @@ and operations to move items around. Feel free to skip this section,
 it is not essential and only needed to craft some examples later on.
 
 \begin{code}
-
 -- predicates
-
-itemIs   :: (Eq i) => i -> Item i p l -> Bool
-itemIsAt :: (Eq l) => l -> Item i p l -> Bool
-itemIsIn :: (Eq i) => i -> Item i p l -> Bool
+itemIs   :: (Eq i) => i -> Item i p s -> Bool
+itemIsAt :: (Eq s) => s -> Item i p s -> Bool
+itemIsIn :: (Eq i) => i -> Item i p s -> Bool
 
 -- accessors
+idOf :: Item i p s -> i
 
-idOf :: Item i p l -> i
-
--- To determine the position of an item we must consider a whole set
--- of items, because we need to find the position of its container.
-
-posOf :: (Show i, Eq i) => i -> [Item i p l] -> l
+-- To determine the Spot of an item we must consider a whole set
+-- of items, because we need to find the Spot of its container.
+spotOf :: (Show i, Eq i) => i -> [Item i p s] -> s
 
 -- moving items
-
-putItemAt :: l -> Item i p t -> Item i p l
-putItemIn :: i -> Item i p t -> Item i p l
+putItemAt :: s -> Item i p t -> Item i p s
+putItemIn :: i -> Item i p t -> Item i p s
 \end{code}
 
 We omit the trivial implementations of these functions.
 
 %if False
 \begin{code}
-itemIs id (ItemAt i p l) = i==id
-itemIs id (ItemIn i p _) = i==id
+itemIs id (Item i _ _) = i==id
 
-itemIsAt loc (ItemAt i p l) = l==loc
-itemIsAt loc (ItemIn _ _ _) = False
+itemIsAt loc (Item i p (At s)) = s==loc
+itemIsAt loc _                 = False
 
-itemIsIn contId (ItemAt i p l) = False
-itemIsIn contId (ItemIn _ _ i) = i == contId
+itemIsIn cont (Item i p (In c)) = c == cont
+itemIsIn cont _                 = False
 
-putItemAt loc (ItemAt i p _) = ItemAt i p loc
-putItemAt loc (ItemIn i p _) = ItemAt i p loc
+putItemAt loc (Item i p _) = Item i p (At loc)
 
-putItemIn cnt (ItemAt i p l) = ItemIn i p cnt
-putItemIn cnt (ItemIn i p c) = ItemIn i p cnt
+putItemIn cnt (Item i p _) = Item i p (In cnt)
 
-idOf (ItemAt i _ _) = i
-idOf (ItemIn i _ _) = i
+idOf (Item i _ _) = i
 
 
-posOf id items = case find (itemIs id) items of
-  Just (ItemAt i p l)   -> l
-  Just (ItemIn i p cnt) -> posOf cnt items
-  Nothing               -> error ("Item " ++ show id ++ " not found")
+spotOf id items = case find (itemIs id) items of
+  Just (Item i p (At l)) -> l
+  Just (Item i p (In c)) -> spotOf c items
+  Nothing                -> error ("Item " ++ show id ++ " not found")
 \end{code}
 %endif
 
@@ -216,14 +212,14 @@ type ExWorld = (ExTime,[ExItem])
 So here is the implementation:
 
 \begin{code}
-exUnpack id dt (t, items) = 
-  case partition (itemIsIn id) items of
+exUnpack cnt dt (t, items) = 
+  case partition (itemIsIn cnt) items of
     ([],_)          -> [] -- No more Items in the container
-    (i:is, others)  -> (t+dt, items') : exUnpack id dt (t+dt, items')
+    (i:is, others)  -> (t+dt, items') : exUnpack cnt dt (t+dt, items')
       where
         items'   = i' : (is ++ others)
-        i'       = putItemAt pos' i 
-        pos'     = posOf (idOf i) items
+        i'       = putItemAt loc' i 
+        loc'     = spotOf (idOf i) items
 \end{code}
 
 We create am example container and two Items which are inside the
@@ -232,9 +228,9 @@ container
 \begin{code}
 exItems :: [ExItem]
 exItems = [
-  ItemAt 1 "Container" "Area51",
-  ItemIn 2 "Item" 1,
-  ItemIn 3 "Item" 1
+  Item 1 "Container" (At "Area51"),
+  Item 2 "Item" (In 1),
+  Item 3 "Item" (In 1)
   ]
 \end{code}
 
@@ -243,7 +239,7 @@ this document.
 
 \begin{code}
 exPrint :: [ExWorld] -> String
-exRun   ::  IO ()
+exRun   ::  ExWorld -> IO ()
 \end{code}
 
 %if False
@@ -254,39 +250,49 @@ exPrint ((t, items):rest) = "t=" ++ (show t) ++ exPrintItems items
   where
     exPrintItems is = concatMap (\i -> "\n\t" ++ (show i)) items
 
-exRun = putStrLn $ exPrint $ initialState : exUnpack 1 10 initialState
-  where
-    initialState = (0, exItems)
+exRun initialState = putStrLn $ exPrint $ initialState : exUnpack 1 10 initialState
 \end{code}
 %endif
 
 When we run the example we see, that at each step a single item gets
-unpacked and assumes the position of its container. At the end all
-|ItemIn|-Items have been converted to |ItemAt|-Items.
+unpacked and assumes the Spot of its container. At the end no more
+items as |In| a container.
 
 \needspace{8em}
 \begin{verbatim}
 *Main> exRun
 t=0
-	ItemAt 1 "Container" "Area51"
-	ItemIn 2 "Item" 1
-	ItemIn 3 "Item" 1
+	Item 1 "Container" (At "Area51")
+	Item 2 "Item" (In 1)
+	Item 3 "Item" (In 1)
 t=10
-	ItemAt 2 "Item" "Area51"
-	ItemIn 3 "Item" 1
-	ItemAt 1 "Container" "Area51"
+	Item 2 "Item" (At "Area51")
+	Item 3 "Item" (In 1)
+	Item 1 "Container" (At "Area51")
 t=20
-	ItemAt 3 "Item" "Area51"
-	ItemAt 2 "Item" "Area51"
-	ItemAt 1 "Container" "Area51"
-
+	Item 3 "Item" (At "Area51")
+	Item 2 "Item" (At "Area51")
+	Item 1 "Container" (At "Area51")
 \end{verbatim}
 
+\subsubsection{Performance}
 
+Our simple list-based implementation shows very poor
+performance. Unpacking a container with 1000 Items already takes close
+to one second. 3000 Items already take several seconds and execution
+time increases non linearly. This is not too amazing, since we
+\begin{itemize}
+\item do a full table scan over all the items with each unpack
+  operation
+\item keep all the world states around such that unpacking 1000 items
+  leads to 1000 world states.
+\end{itemize}
 
-Items and Resources share some traits insofar as mobile resources can
-move around just like items, i.e. both Items and mobile Resources have
-a |Position|.
+Since \emph{premature optimization is the root of all evil} (Knuth,
+Donald 1974), we leave things as they are for now, particularly since
+the solutions to the above problems appear obvious (use
+hashes/indexes, collect interesting world states and discard the
+others).
 
 %------------------------------------------------------------
 \section{Reading from the real world}
@@ -302,9 +308,9 @@ There are two types of information we expect to receive:
 
 \begin{description}
 \item[item-at] messages describe that an item was seen at a certain
-  position. Such messages are typically triggered by scanning items.
+  Spot. Such messages are typically triggered by scanning items.
 \item[item-not-at] messages describe that an item is definitely
-  \emph{not} at a certain postion or not inside a container. Such
+  \emph{not} at a certain Spot or not inside a certain container. Such
   messages can be triggered by \emph{completion} events. An event
   \emph{unpacking completed} would tells us, that no items remain in
   the container.
@@ -322,10 +328,11 @@ of the possibilities. Only when the simulation is \emph{certain} that
 an item is at one and only one position, we are lost, when the world
 tells us that this is not the case.
 
-It is important to understand that \emph{unpacking completed} does not
-tell us, that all items in the container are now at a postion where
-the unpacking process put them. They could well have been moved away
-while the unpacking was still in progress.
+\ding{228} It is important to understand that an \emph{unpacking
+  completed} message does \emph{not} tell us, that all items in the
+container are now at the Spot where the unpacking process put
+them. They could well have been moved away while the unpacking was
+still in progress.
 
 %\begin{figure}[htb!]
 %\centering
