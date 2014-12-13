@@ -41,7 +41,7 @@ pieces.
 \end{abstract}
 
 % ------------------------------------------------------------
-\section{Introducton}
+\section{Introduction}
 
 \subsection{Steppers}
 
@@ -82,7 +82,7 @@ whole. With this way of thinking, Events are not required.
 
 \begin{figure}[H]
   \centering
-    \includegraphics[width=3cm]{modularSimulation2.eps}
+    \includegraphics[width=2.5cm]{modularSimulation2.eps}
   \caption{Stepper with Events}
   \label{fig:stepperOp}
 \end{figure}
@@ -153,12 +153,13 @@ they shoud just advance the time.
 \section{Implementation}
 
 \begin{code}
-{-# LANGUAGE BangPatterns #-}
 import Data.Either
 import Data.Maybe
 import Data.Monoid
 import Data.IntSet
 import Control.DeepSeq
+import Control.Concurrent
+import System.Time
 import Debug.Trace
 import System.TimeIt
 
@@ -173,10 +174,10 @@ evtTime (Event t _) = t
 evtData (Event _ d) = d
 \end{code}
 
-\subsubsection{Running a Simulation}
+\subsection{Running a Simulation}
 
-We haven't yet described how to run a Stepper. The main operation
-follows directly from Figure~\ref{fig:stepperOp}
+The main operation to run a Stepper follows directly from
+Figure~\ref{fig:stepperOp}
 
 \begin{itemize}
 \item Ask a stepper for the next event by calling its |nxtEvt|
@@ -187,13 +188,13 @@ follows directly from Figure~\ref{fig:stepperOp}
 \item Continue with the new SystemState or end the simulation
 \end{itemize}
 
+\subsubsection{Logging}
+
 We are almost never interested in the whole set of SystemStates. We
 really want to create a log of "interesting" observations, a
-\emph{KPI-log}. In the implementation above, we had to compute all
-SystemStates and then run some analysis over it to produce the
-KPIs. It is much better to produce the KPIs as we go along. This way
-many of the intermediate SystemStates can be garbage collected right
-away, reducing the memory footprint significantly.
+\emph{KPI-log}. It is best to produce the KPIs as we go along. This
+way many of the intermediate SystemStates can be garbage collected
+right away, reducing the memory footprint significantly.
 
 What could such a log-creating function look like? No doubt it has to
 look at the current SystemState and the log produced so far (e.g. to
@@ -211,18 +212,28 @@ Hence a logger has the following type:
 type Logger s l = SysState s -> l -> l
 \end{code}
 
-Another question is when the simulation shall terminate. In the naive
-implementation above, it never terminates and the code could only run
-due to haskell's laziness e.g. its ability to cope with infinite
-lists.
+\subsubsection{Termination}
 
-Now we make the termination explicit, by defining another function,
-which looks at the SystemState and returns |True| when done,
-i.e. whose type is
+Another question is when the simulation shall terminate. There are
+three conditions under which the simulation will terminate:
+
+\begin{itemize}
+\item If two successive SystemStates are the same, then the State will
+  remain constant for all time and we can terminate the simulation.
+\item If there is no next Event, the SystemState will not change
+  either.
+\item We can set a termination condition ourselves by e.g. setting an
+  upper limit for the Time of the simulation.
+\end{itemize}
+
+For the latter we define another function, which looks at the
+SystemState and returns |True| when done, i.e. whose type is
 
 \begin{code}
 type Terminator s = SysState s -> Bool
 \end{code}
+
+\subsubsection{RunContext}
 
 \needspace{4em}
 These two functions together make a \emph{RunContext}:
@@ -237,11 +248,14 @@ Note that the |RunContext| is independant of the Steppers and only
 depends on the type of the SystemState and the type of log we want to
 produce.
 
+\subsubsection{runStepper}
+
 Finally we must make sure the SystemState is fully evaluated at each
 recursion (|deepseq|), otherwise thunks will pile up on the stack
 leading to a stack overflow once we make a million iterations. You
 won't have \emph{this} problem in an imperative language.
 
+\needspace{20em}
 Putting it all together gives us:
 
 \begin{code}
@@ -262,13 +276,7 @@ runStepper stp rc log state =
                          runStepper stp rc log' state'
 \end{code}
 
-
-\subsubsection{Example}
-
-Let's define a very simple Stepper. The SystemState shall be a mere
-integer, which is zero at $t=0$. The Event type shall be |()| (think:
-void). An Event shall be fired every 3 units of time and the state
-shall increment by one.
+\subsubsection{Shorthands}
 
 To define a Stepper which does things at certain times, requires some
 thought. After all it only sees the SystemState, which \emph{is}
@@ -297,21 +305,26 @@ opNxtState op = nxtState
 
 \end{code}
 
+
+\subsubsection{Example}
+
+Let's define a very simple Stepper. The SystemState shall be a mere
+integer, which is zero at $t=0$. The Event type shall be |()| (think:
+void). An Event shall be fired every 3 units of time and the state
+shall increment by one.
+
+
+\needspace{4em}
 So this is our example Stepper:
 \begin{code}
 exStepper1 :: Stepper Int ()
 exStepper1 = Stepper (cronNxtEvt 3 ()) (opNxtState (+1))
-
-
 \end{code}
 
 Finally we need to create a |RunContext|.
 \begin{code}
 exRunContext :: RunContext Int [String]
-exRunContext = RunContext {
-    logger     = myLogger,
-    terminator = myTerm
-}
+exRunContext = RunContext myLogger myTerm
         where
             myLogger (SysState t s) [] = ["not logging"]
             myLogger (SysState t s) l  = l
@@ -325,9 +338,9 @@ Our initial log shall be |[]| and the initial State shall be this:
 exState1 = SysState 0 0 :: SysState Int
 \end{code}
 
-To test the exection time we use
+To test the execution time we use
 \begin{code}
-bench x = timeIt $ putStrLn $ show $ x
+bench = timeIt . putStrLn . show 
 \end{code}
 \needspace{4em}
 \begin{run}
@@ -343,7 +356,7 @@ CPU time:   0.05s
 \end{verbatim}
 
 This is the overhead of the simulation as such, as the computations
-from State to State are very simple. We need roughly $\frac{1}{10}sec$
+from State to State are very simple. We need roughly $\frac{1}{2}sec$
 for a million iterations.
 
 \subsection{Shared State implementation}
@@ -374,28 +387,31 @@ then the comparison shall also return Nothing.
 \begin{code}
 
 cmpEvts :: Maybe (Event e1) -> Maybe (Event e2) -> Maybe (Time, Ordering)
-cmpEvts e1 e2 = case (e1,e2) of
-                    (Nothing, Nothing)            -> Nothing
-                    (Nothing, Just (Event t _))   -> Just (t, GT)
-                    (Just (Event t _), Nothing)   -> Just (t, LT)
+cmpEvts e1 e2 = 
+        case (e1,e2) of
+            (Nothing, Nothing)            -> Nothing
+            (Nothing, Just (Event t _))   -> Just (t, GT)
+            (Just (Event t _), Nothing)   -> Just (t, LT)
 
-                    (Just (Event t1 _), 
-                     Just (Event t2 _))           -> Just (
-                                                           min t1 t2, 
-                                                           compare t1 t2
-                                                          )
+            (Just (Event t1 _), 
+             Just (Event t2 _))           -> Just (
+                                                   min t1 t2, 
+                                                   compare t1 t2
+                                                  )
                                                   
 \end{code}
 
 
 To define a combined Stepper, we must define the two functions
 |nxtEvt| and |nxtState|. |nxtEvt| must return a (combined) Event,
-whose data type we're free to chose, as long as |nxtState| understands
+whose data type we're free to choose, as long as |nxtState| understands
 it. We chose to remember as the new Event data :
+
 \begin{itemize}
 \item the |nxtState| function of the chosen Stepper along with
 \item the Event the Stepper reported. 
 \end{itemize}
+
 The type of the SystemState is easier: it is the same for each Stepper
 and the combined Stepper.
 
@@ -405,53 +421,36 @@ must wrap the result in an |Either| type (think: union).
 
 \begin{code}
 mkStepper :: Stepper s e1 -> Stepper s e2 
-        -> Stepper s (
-                      -- This is the type of the Event data:
-                      Either 
-                      (NxtState s e1, e1) 
-                      (NxtState s e2, e2)
-                     )
-mkStepper = undefined
+        -> Stepper s (Either e1 e2)
 \end{code}
 
 
-\needspace{5em}
+\needspace{18em}
 Now we implement the two functions:
 \begin{code}
-{-
 mkStepper stp1 stp2 = 
         Stepper myNxtEvt myNxtState
         where
             myNxtEvt sState = 
                     let 
-                            evtLeft  = nxtEvt stp1 sState
-                            evtRight = nxtEvt stp2 sState
-                            left  t = Just $ Event t $ Left  
-                                      (
-                                      -- remember nxtState function:
-                                      nxtState stp1, 
-                                      -- remember EventData:
-                                      evtData $ fromJust evtLeft 
-                                      ) 
-                            right t = Just $ Event t $ Right 
-                                      (
-                                       nxtState stp2, 
-                                       evtData $ fromJust evtRight
-                                      ) 
-                           in 
-                               case cmpEvts evtLeft evtRight of
-                                   Nothing      -> Nothing
-                                   Just (t, LT) -> left t
-                                   Just (t, GT) -> right t
-                                   Just (t, EQ) -> right t
+                            evtLeft      = nxtEvt stp1 sState
+                            evtRight     = nxtEvt stp2 sState
+                    in 
+                        case cmpEvts evtLeft evtRight of
+                            Nothing      -> Nothing
+                            Just (t, LT) -> mkLrEvt Left  t evtLeft
+                            Just (t, GT) -> mkLrEvt Right t evtRight
+                            Just (t, EQ) -> mkLrEvt Right t evtRight
             myNxtState sState evt =
                     case evt of
-                        Event t (Left  (nxs, evd)) 
-                                -> nxs sState (Event t evd)
-                        Event t (Right (nxs, evd))
-                                -> nxs sState (Event t evd)
+                        Event t (Left e) 
+                                -> nxtState stp1 sState (Event t e)
+                        Event t (Right e) 
+                                -> nxtState stp2 sState (Event t e)
+            -- shorthands:
+            getJustDat   = evtData . fromJust 
+            mkLrEvt lr t = Just . (Event t) . lr . getJustDat 
 
--}
 \end{code}
 
 
@@ -463,6 +462,29 @@ mkStepper stp1 stp2 =
 \begin{code}
 main = bench $ runStepper exStepper1 exRunContext [] exState1
 \end{code}
+
+
+
+\begin{code}
+-- runWorldStepper :: NFData s => (Stepper s e) -> RunContext s l -> l -> SysState s 
+--           -> (SysState s, l)
+runWorldStepper stp rc log state = 
+        let
+                evt    = nxtEvt stp state
+                state' = case evt of
+                             Nothing -> state
+                             Just e  -> nxtState stp state e
+                evt'   = getChar
+                log'   = logger rc state' log
+        in
+            if (terminator rc state') || isNothing evt
+            then (state', log')
+            else (stateTime state', stateData state') 
+                         `deepseq` 
+                         runStepper stp rc log' state'
+\end{code}
+
+
 \end{document}
 
 

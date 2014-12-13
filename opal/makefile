@@ -14,7 +14,7 @@ export EMPTY_LHS
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
 %.tex: %.lhs
-	lhs2tex -tt $? > $(@:.lhs=.tex)
+	lhs2TeX -tt $? > $(@:.lhs=.tex)
 
 %pdf: %tex
 	pdflatex $?

@@ -2,6 +2,7 @@
 %include lhs2TeX.fmt
 %include lhs2TeX.sty
 %format <- = "$\leftarrow${ }"
+%format .  = "$\circ$"
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage[parfill]{parskip}
@@ -36,17 +37,15 @@
 
 \subsection{What do we mean by concurrency?}
 
-We are \emph{not} talking about running several \emph{pure functions}
-in parallel. After all, it is not obvious what that should
-\emph{mean}. In a pure language everything must produce a result and
-running functions in parallel must return the same result as when run
-sequentially. There may be performance benefits, but other than that
-it is easier to assume sequential operations.
-
 The concurrency we're talking about here is running several
 \emph{effectful} computations (\emph{actions}) in parallel. One such
 effect could be doing IO. Here concurrency is not a means of improving
 performance, but a way to improve program structure and clarity.
+
+The other type of concurency is actually \emph{parallelism}. This is
+all about spreading the load of a computation over several CPU cores
+in oder to improve performance. A parallel progam always produces the
+same result as a sequential program (when written properly).
 
 \needspace{12em}
 What we're really after is a way to obtain a list of effectful
@@ -163,7 +162,7 @@ operations do not manipualte a Stack, but ``the World''.
 Remember that in Haskell, the type |IO a| stands for something which
 does IO and returns an |a| to the program. Hence |IO ()| is an
 operation which returns nothing usable, but still does IO, such as
-\emph{output} operations as |putStrLn|. |IO String| in contrast does
+\emph{output} operations like |putStrLn|. |IO String| in contrast does
 IO but also returns a |String| to the program, which is typical for
 \emph{input} operations.
 
@@ -171,18 +170,21 @@ What we need here is an operation which does IO and returns what to do
 next.
 
 \begin{code}
-data Action1 = Action1 (IO Action1)
+data SuspComp1 = SuspComp1 (IO SuspComp1)
 \end{code}
 
-However, such actions would have no way to terminate. They are obliged
-to always return yet another Action. To cicumvent this, we allow an
-Action to return an indication that it wants to terminate.
+However, such suspended computations would have no way to
+terminate. They are obliged to always return yet another suspended
+computation. To cicumvent this, we allow it to alternatively return an
+indication that it wants to terminate. This is a thing, which can run
+as long as it returns continuations and then eventually stops. We call
+it a |Thread|.
 
 \begin{code}
-data Action2 = Atom2 (IO Action2) | Stop2
+data Thread2 = Atom2 (IO Thread2) | Stop2
 \end{code}
 
-If we have a list of such |Action2| thingies we can run it in the
+If we have a list of such |Thread2| thingies we can run it in the
 following way:
 
 \begin{code}
@@ -199,41 +201,43 @@ run1 (a:as) = case a of
                          run1 as -- run only the tail of the list
 \end{code}
 
-Here is a function which constructs an |Action2|. It takes a String
-and a Counter |i|, produces some output and then returns itself with a
+Everytime an IO action is performed its returned continuation
+is appended to the list, while the head of the list is discarded.
+
+Here is a function which constructs a |Thread2|. It takes a String and
+a Counter |i|, produces some output and then returns itself with a
 decremented counter as the continuation. When the counter reaches
 zero, it returns a |Stop2| as the continuation.
 
 \begin{code}
-exAction1 name i = Atom2 $ do
+exThread1 name i = Atom2 $ do
                        putStrLn $ name ++ " " ++ (show i) ++ ","
                        return $ case i of
                                   0 -> Stop2
-                                  _ -> (exAction1 name (i-1))
+                                  _ -> (exThread1 name (i-1))
 \end{code}
 
 \needspace{12em}
 \begin{run}
-|*Main> run1 [exAction1 "foo" 3, exAction1 "bar" 1]|\\
-  \eval{run1 [exAction1 "foo" 3, exAction1 "bar" 1]}
+|*Main> run1 [exThread1 "foo" 3, exThread1 "bar" 1]|\\
+  \eval{run1 [exThread1 "foo" 3, exThread1 "bar" 1]}
 \end{run}
 
-So our |Action2| type in conjucntion with |run1| really produces a
-list of interleaved IO actions, and the list is manipulaed \emph{as we
-  go}. Everytime an IO action is performed its returned continuation
-is appended to the list, while the head of the list is discarded.
+So our |Thread1| type in conjunction with |run1| really produces a
+list of interleaved IO actions, and the list is manipulated \emph{as
+we go}. 
 
-\subsection{Step-by-step Actions}
+\subsection{Step-by-step Threads}
 
-This works nicely, but only because our actions were extraordinarily
+This works nicely, but only because our Threads were extraordinarily
 simple. They were essentially loops, written as recursive
-functions. What if we want an Action which does something, then
+functions. What if we want a Thread which does something, then
 something else and then some more? The problem lies in the fact that
-after each step the Action needs to return its own continuation. This
+after each step the Thread needs to return its own continuation. This
 is doable, but it's not pretty:
 
 \begin{code}
-exAction2 = Atom2 $ do
+exThread2 = Atom2 $ do
                 putStrLn "step 1,"
                 return $ Atom2 $ do
                         putStrLn "step 2,"
@@ -246,17 +250,17 @@ The code tends to drift to the right. But it works
 
 \needspace{12em}
 \begin{run}
-|*Main> run1 [exAction2, exAction1 "foo" 1]|\\
-  \eval{run1 [exAction2, exAction1 "foo" 1]}
+|*Main> run1 [exThread2, exThread1 "foo" 1]|\\
+  \eval{run1 [exThread2, exThread1 "foo" 1]}
 \end{run}
 
 The code looks ugly, because there is no special support for chaining
-|Action2| functions. Hence we had to resort to \$ for
+|Thread2| functions. Hence we had to resort to \$ for
 chaining. Without \$ we would have had to use parentheses, which looks
 even uglier.
 
 \begin{code}
-exAction3 = Atom2 ( do
+exThread3 = Atom2 ( do
                 putStrLn "step 1,"
                 return ( Atom2 ( do
                         putStrLn "step 2,"
@@ -274,7 +278,7 @@ something and then return a coninuation}.
 We can write a function which does just that:
 
 \begin{code}
-atom2 :: IO a -> Action2 -> Action2
+atom2 :: IO a -> Thread2 -> Thread2
 atom2 ioOperation continuation = 
         Atom2 $ do ioOperation
                    return continuation
@@ -283,8 +287,8 @@ atom2 ioOperation continuation =
 Then we would like to write something like:
 
 \begin{code}
-exAction4 :: Action2 -> Action2
-exAction4= (atom2 (putStrLn "step 1,"))
+exThread4 :: Thread2 -> Thread2
+exThread4= (atom2 (putStrLn "step 1,"))
            `chainWith`
            (atom2 (putStrLn "step 2,"))
            `chainWith`
@@ -292,42 +296,44 @@ exAction4= (atom2 (putStrLn "step 1,"))
 \end{code}
 
 We need to omit the final |Stop2|, because that would turn the whole
-thing into an |Action2|, instead of the open-ended |Action2->Action2|
+thing into a |Thread2|, instead of the open-ended |Thread2->Thread2|
 type. It turns out the |chainWith| function is simply function
 composition:
 
 \begin{code}
-chainWith :: (Action2 -> Action2) -> (Action2 -> Action2) -> (Action2 -> Action2)
-chainWith a1 a2 = a1 . a2
+chainWith :: (Thread2 -> Thread2) -> (Thread2 -> Thread2) 
+          -> (Thread2 -> Thread2)
+chainWith' a1 a2 = a1 . a2 -- long version
+chainWith = (.) -- short (point-free) version
 \end{code}
 
 So we can just write:
 \begin{code}
-exAction5 :: Action2 -> Action2
-exAction5= (atom2 (putStrLn "step 1,")) .
+exThread5 :: Thread2 -> Thread2
+exThread5= (atom2 (putStrLn "step 1,")) .
            (atom2 (putStrLn "step 2,")) .
            (atom2 (putStrLn "step 3,"))
 \end{code}
 
-Now when we run the whole thing, we must turn the function |Action2 ->
-Action2| into an |Action2| by passing it a final Action, namley
+Now when we run the whole thing, we must turn the function |Thread2 ->
+Thread2| into a |Thread2| by passing it a final operation, namley
 |Stop2|. And we can of course still start multiple threads.
 
 \begin{run}
-|*Main> run1[exAction5 Stop2, exAction1 "foo" 1]|\\
-  \eval{run1[exAction5 Stop2, exAction1 "foo" 1]}
+|*Main> run1[exThread5 Stop2, exThread1 "foo" 1]|\\
+  \eval{run1[exThread5 Stop2, exThread1 "foo" 1]}
 \end{run}
 
 \section{Real Continuations}
 \subsection{Local State}
 
-Or examples are sill somewhat simplistic, because each Action is
-completely isolated from the other.  One Action cannot pass a value to
-the next. In fact, this is a consequence of our chaining function,
+Or examples are sill somewhat simplistic, because each |Atom2| is
+completely isolated from the other.  One |Atom2| cannot pass a value
+to the next. In fact, this is a consequence of our chaining function,
 because the nested |do| blocks are well capable of doing that.
 
 \begin{code}
-exAction7 x = Atom2 $ do
+exThread7 x = Atom2 $ do
                 let x1 = x+5 -- $\leftarrow$ \mybox{here}
                 putStrLn $ "x1=" ++ (show x1)
                 return $ Atom2 $ do
@@ -340,8 +346,8 @@ exAction7 x = Atom2 $ do
 \end{code}
 
 \begin{run}
-|*Main> run1 [exAction7 11]|\\
-  \eval{run1 [exAction7 11]}
+|*Main> run1 [exThread7 11]|\\
+  \eval{run1 [exThread7 11]}
 \end{run}
 
 \subsection{State as the root of all evil}
@@ -378,8 +384,8 @@ outcome, but any scoping rule attacks the same problem.
 
 \subsection{Passing values}
 
-So far we're composing function from |Action| to |Action|, which gives
-us new functions from |Action| to |Action|. In the end we had to pass
+So far we're composing function from |Thread| to |Thread|, which gives
+us new functions from |Thread| to |Thread|. In the end we had to pass
 a final Action, such as |Stop2| to bring the whole thing to its
 conclusion.
 

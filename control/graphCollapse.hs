@@ -12,7 +12,7 @@ import Data.Graph.Inductive.Graph
 import Data.Graph.Inductive.Graphviz
 import qualified Data.Graph.Inductive.PatriciaTree as P
 import Control.Arrow
-
+import System.Info
 trc s x = trace (s ++ ":" ++show x) x
 
 type Label = String
@@ -32,8 +32,7 @@ instance Show CEdge
 
 
 type CGraph pl = P.Gr (CNode pl) CEdge
-cempty::P.Gr(CNode pl) CEdge
-cempty = empty
+cempty = empty :: CGraph pl
 
 ------------------------------------------------------------
 -- Creating simple Nodes and Eges
@@ -69,10 +68,6 @@ createNodes cns gr = insNodes nodes gr
 
 createNode :: DynGraph gr => CNode pl -> GraphTransform gr pl
 createNode cn = createNodes [cn]
-
-dropNodes :: DynGraph gr => [Node] -> GraphTransform gr pl
-dropNodes = undefined
-
 
 
 type NodeEq pl = LNode (CNode pl) -> LNode (CNode pl) -> Bool
@@ -127,8 +122,8 @@ exGraph fan =
       theirInwGroups    = (3*fan)  `named` "TIG"
       outwRuns          = fan      `named` "OR"
       sequenceRuns      = (4*fan)  `named` "SQ"
-      walks             = (16*fan) `named` "WK"
-      delOffices        = (6*fan)  `named` "DO"
+      walks             = (9*fan)  `named` "WK"
+      delOffices        = (3*fan)  `named` "DO"
   in
     createNodes [extTransport  ["From"++collOffice] collOffice "CollArrival" 
                  | collOffice <- collOffices]
@@ -148,7 +143,7 @@ exGraph fan =
     createNodes [intTransport [inwGroup] "IctArrival" "InwArea"
                  | inwGroup <- myInwGroups]
     >>>
-    createNodes [outwSort ["From"++collOffice++"Unp"] (myInwGroups++theirInwGroups) "OutwArea"
+    createNodes [outwSort ["From"++collOffice++"Unp"] (myInwGroups++ (map (++ "Unp")theirInwGroups)) "OutwArea"
                  | x<-outwRuns, collOffice <- collOffices]
     >>>
     createNodes [intTransport  [inwGroup] "OutwArea" "InwArea"
@@ -169,11 +164,14 @@ exGraph fan =
     createNodes [extTransport walk  "DoDeparture" delOffice
                  | (delOffice, walk) <- distribute delOffices walks]
     >>>
-    createNodes [intTransport inwardGroup "OutwArea" "IctDepart"
+    createNodes [intTransport (map (++ "Unp") inwardGroup) "OutwArea" "IctDepart"
                  | (center, inwardGroup) <- distribute centers theirInwGroups]
     >>>
-    createNodes [extTransport  inwardGroup "IctDepart" center
+    createNodes [pack (map (++ "Unp") inwardGroup) ["To"++center]  "IctDepart"
                  | (center, inwardGroup) <- distribute centers theirInwGroups]
+    >>>
+    createNodes [extTransport  ["To"++center] "IctDepart" center
+                 | center <- centers]
     >>>
     connectAll connectible 
         where
@@ -188,6 +186,7 @@ exGraph fan =
             extTransport products orig dest        = expl 'T' products products orig dest
             intTransport products orig dest        = expl 't' products products orig dest
             unpack       accepts produces location = expl 'U' accepts produces location location
+            pack         accepts produces location = expl 'P' accepts produces location location
             outwSort     accepts produces location = expl 'O' accepts produces location location
             inwSort      accepts produces location = expl 'I' accepts produces location location
             seqSort      accepts produces location = expl 'S' accepts produces location location
@@ -248,8 +247,6 @@ setDest n (i,j) = (i,n)
 
 --type GraphTransform pl = CGraph pl -> CGraph pl
 
-
-
 groupNodes :: DynGraph gr => (Label,[Node])  -> GraphTransform gr pl
 groupNodes (lbl,ids) gr =
   let
@@ -262,17 +259,22 @@ groupNodes (lbl,ids) gr =
                                 map (setDest id)  (oldEdgesTo   \\ oldEdgesWithin) ++ 
                                 map (setOrig id)  (oldEdgesFrom \\ oldEdgesWithin)
   in
-     insEdges newEdges $ delEdges oldEdges $ (delNodes ids) $ insNode (id, (NN lbl)) gr
+      (
+      insNode (id, (NN lbl)) 
+      >>> delNodes ids
+      >>> delEdges oldEdges
+      >>> insEdges newEdges
+      ) gr
 
+--    insEdges newEdges $ delEdges oldEdges $ (delNodes ids) $ insNode (id, (NN lbl)) gr
 
-
-exGraph2 :: P.Gr (CNode ExPayload) CEdge
+exGraph2 :: CGraph ExPayload
 exGraph2 =
   let gr = (exGraph 1) cempty
   in groupNodes ("foo",  [0,1,2,3,4,12,13,14,15]) gr
     
 
-exGraph3 :: Int -> P.Gr (CNode ExPayload) CEdge
+exGraph3 :: Int -> CGraph ExPayload
 exGraph3 fan =
   let gr = (exGraph fan) empty
   in foldr groupNodes gr (aggregate gr byFromToTyped)
@@ -283,8 +285,9 @@ exGraph3 fan =
 --draw :: (DynGraph gr, Show pl)  => GraphTransform gr pl -> IO ()
 draw gr = do
     let 
-        dot = "D:/Software/Graphviz/bin/dot"
---        dot = "dot"
+        dot = case os of
+                  "linux" -> "dot"
+                  _ -> "D:/Software/Graphviz/bin/dot"
         format = "eps"
         options = " -Gnodesep=0.1  -Nstyle=filled,rounded -Nshape=box -Nfontname=Arial -Efontname=Arial -Epenwidth=3 "
     writeFile "xxx.dot" (graphviz' gr)

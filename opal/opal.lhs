@@ -79,13 +79,13 @@ The Goals of Opal can be summarized as follows
 \begin{itemize}
 \item Communicate with external systems (``avoid the megaphone'')
 \end{itemize}
+
 %------------------------------------------------------------
 \section{The World}
 %------------------------------------------------------------
-\subsection{Items}
 
 The |World| stands for what Opal needs to know about the world. This
-includes
+includes:
 \begin{description}
 \item[ItemPositions] This is the position of each and every item Opal
   cares about
@@ -96,7 +96,9 @@ includes
 \item[Time] This is the current time of the world
 \end{description}
 
-\subsubsection{Definition}
+\section{Items}
+
+\subsection{Definition}
 
 An |Item| is either a toplevel Item (an |ItemAt|) which is at a
 certain |Position| or it is an Item which is inside a Container, where
@@ -127,73 +129,88 @@ data Item i p l = ItemAt i p l |
                      deriving (Eq,Show)
 \end{code}
 
-\subsubsection{Operations}
+\subsection{Operations}
 
 We'll define some operations on Items, primarily predicates (tests)
 and operations to move items around. Feel free to skip this section,
 it is not essential and only needed to craft some examples later on.
 
 \begin{code}
-itemIs :: (Eq i) => i -> Item i p l -> Bool
+
+-- predicates
+
+itemIs   :: (Eq i) => i -> Item i p l -> Bool
+itemIsAt :: (Eq l) => l -> Item i p l -> Bool
+itemIsIn :: (Eq i) => i -> Item i p l -> Bool
+
+-- accessors
+
+idOf :: Item i p l -> i
+
+-- To determine the position of an item we must consider a whole set
+-- of items, because we need to find the position of its container.
+
+posOf :: (Show i, Eq i) => i -> [Item i p l] -> l
+
+-- moving items
+
+putItemAt :: l -> Item i p t -> Item i p l
+putItemIn :: i -> Item i p t -> Item i p l
+\end{code}
+
+We omit the trivial implementations of these functions.
+
+%if False
+\begin{code}
 itemIs id (ItemAt i p l) = i==id
 itemIs id (ItemIn i p _) = i==id
 
-itemIsAt :: (Eq l) => l -> Item i p l -> Bool
 itemIsAt loc (ItemAt i p l) = l==loc
 itemIsAt loc (ItemIn _ _ _) = False
 
-itemIsIn :: (Eq i) => i -> Item i p l -> Bool
 itemIsIn contId (ItemAt i p l) = False
 itemIsIn contId (ItemIn _ _ i) = i == contId
-\end{code}
 
-We can move an Item around
-
-\begin{code}
-putItemAt loc (ItemAt i p l)   = ItemAt i p loc
-putItemAt loc (ItemIn i p cnt) = ItemAt i p loc
+putItemAt loc (ItemAt i p _) = ItemAt i p loc
+putItemAt loc (ItemIn i p _) = ItemAt i p loc
 
 putItemIn cnt (ItemAt i p l) = ItemIn i p cnt
 putItemIn cnt (ItemIn i p c) = ItemIn i p cnt
-\end{code}
 
-\needspace{18em}
-To determine the position of an item we must consider a whole set of
-items, because we need to find the position of its container.
-
-\begin{code}
-idOf :: Item i p l -> i
 idOf (ItemAt i _ _) = i
 idOf (ItemIn i _ _) = i
 
-posOf :: (Show i, Eq i) => i -> [Item i p l] -> l
+
 posOf id items = case find (itemIs id) items of
   Just (ItemAt i p l)   -> l
   Just (ItemIn i p cnt) -> posOf cnt items
   Nothing               -> error ("Item " ++ show id ++ " not found")
 \end{code}
+%endif
 
 \needspace{8em}
-\subsubsection{Example}
+\subsection{Example}
 
-With this humble definition we can already describe the unpacking of a
-container. 
+With this humble definition we can simulate the unpacking of a
+container.
 
 The unpack operation takes an id (the container to unpack), a |dt|
 parameter which is the time it takes to unpack a single item and an
-initial state of the World.
+initial state of the world.
 
 The result shall describe how the world changes in the course of this
 action, where the world is described by a |Time| and a collection of
-Items.
+Items. The result can thus be seen as a \emph{movie} of the world.
 
 \begin{code}
-type ExId = Int
-type ExTime = Int
-type ExItem = Item ExId String String
+exUnpack :: ExId -> ExTime -> ExWorld -> [ExWorld]
+
+type ExId    = Int
+type ExTime  = Int
+type ExItem  = Item ExId String String
 type ExWorld = (ExTime,[ExItem])
 
-exUnpack :: ExId -> ExTime -> ExWorld -> [ExWorld]
+
 \end{code}
 
 So here is the implementation:
@@ -210,7 +227,7 @@ exUnpack id dt (t, items) =
 \end{code}
 
 We create am example container and two Items which are inside the
-container.
+container
 
 \begin{code}
 exItems :: [ExItem]
@@ -219,9 +236,18 @@ exItems = [
   ItemIn 2 "Item" 1,
   ItemIn 3 "Item" 1
   ]
+\end{code}
 
--- and some helpers to print the result
+... and some helpers to print the result, whose implementation we omit in
+this document.
 
+\begin{code}
+exPrint :: [ExWorld] -> String
+exRun   ::  IO ()
+\end{code}
+
+%if False
+\begin{code}
 exPrint [] = "\n"
 exPrint ((t, items):rest) = "t=" ++ (show t) ++ exPrintItems items
                             ++ "\n" ++ exPrint rest
@@ -232,10 +258,11 @@ exRun = putStrLn $ exPrint $ initialState : exUnpack 1 10 initialState
   where
     initialState = (0, exItems)
 \end{code}
+%endif
 
 When we run the example we see, that at each step a single item gets
 unpacked and assumes the position of its container. At the end all
-|ItemIn| Items are gone and all Items have been converted to |ItemAt|.
+|ItemIn|-Items have been converted to |ItemAt|-Items.
 
 \needspace{8em}
 \begin{verbatim}
@@ -255,13 +282,50 @@ t=20
 
 \end{verbatim}
 
+
+
 Items and Resources share some traits insofar as mobile resources can
 move around just like items, i.e. both Items and mobile Resources have
 a |Position|.
 
+%------------------------------------------------------------
+\section{Reading from the real world}
+%------------------------------------------------------------
 
+In the previous example we did a simulation, which ran all by itself,
+i.e. without any interaction with the real world. We must however, be
+prepared that the world does not agree with our simulation. We expect
+that the world is equipped with multiple sensors which can actually
+look at the world and tell us what \emph{really} happened.
 
+There are two types of information we expect to receive:
 
+\begin{description}
+\item[item-at] messages describe that an item was seen at a certain
+  position. Such messages are typically triggered by scanning items.
+\item[item-not-at] messages describe that an item is definitely
+  \emph{not} at a certain postion or not inside a container. Such
+  messages can be triggered by \emph{completion} events. An event
+  \emph{unpacking completed} would tells us, that no items remain in
+  the container.
+\end{description}
+
+The last case is particularly interesting. If a simulation believes an
+item is in a container, but the world tells us it is not, where is it
+then?
+
+We can make better use of such messages, if the simulation is a bit
+fuzzy. If the simulation does not just assume a single position of an
+item, but several possible locations, then the information that an
+item is no longer in a container allows us to at least rule out one
+of the possibilities. Only when the simulation is \emph{certain} that
+an item is at one and only one position, we are lost, when the world
+tells us that this is not the case.
+
+It is important to understand that \emph{unpacking completed} does not
+tell us, that all items in the container are now at a postion where
+the unpacking process put them. They could well have been moved away
+while the unpacking was still in progress.
 
 %\begin{figure}[htb!]
 %\centering
