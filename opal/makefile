@@ -1,6 +1,12 @@
 
 export DFD_STORE
 export EMPTY_LHS
+
+opal.pdf: opal.tex items.tex monitoring.tex \
+	  interpolating.eps  unpackComplete.eps
+	pdflatex opal.tex
+
+
 %.eps: %.dot
 	dot -T eps -l dfd.ps $? > $@
 
@@ -28,8 +34,14 @@ dfd.ps:
 %.lhs:
 	echo "$$EMPTY_LHS" > $@
 
+touch:
+	touch *.lhs
+
 clean:
-	rm -f *.pdf *.eps *.png
+	rm -f *.pdf *.eps *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
+
+
+
 
 # ------------------------------------------------------------
 # verbatim files

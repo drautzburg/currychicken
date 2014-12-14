@@ -1,0 +1,25 @@
+digraph d {
+	rankdir=LR
+	subgraph sensor {
+		node [shape=circle, style=filled, fillcolor="#EEEEEE", fixedsize=true, width=0.4]
+		S1
+		S2
+		}
+	subgraph store {
+		node [shape=box]
+		A
+		B
+		C
+	}
+	subgraph process {
+		node [shape=box, style=rounded]
+		trans1
+		trans2
+	}
+	{rank=same; A S1}
+	{rank=same; C S2}
+		
+A -> trans1 -> B -> trans2 -> C
+A -> S1
+C -> S2
+}
