@@ -18,10 +18,20 @@
 \usepackage{colortbl}	
 \usepackage{pgf}
 \usepackage{pifont}
+
+
+\usepackage{thmbox}
+%\newtheorem[S]{rule}{Rule}
+\newtheorem[S]{note}{Note}
+
 \usepackage[all]{nowidow}
+\usepackage{ragged2e}
+\RaggedRight
 
 \usepackage[framemethod=tikz]{mdframed}
 \newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
+
+\hyphenation{work-order}
 
 % --------------
 % tikz
@@ -95,11 +105,12 @@ The Goals of Opal can be summarized as follows
 The |World| stands for what Opal needs to know about the world. This
 includes:
 \begin{description}
-\item[ItemPositions] This is the position of each and every item Opal
+\item[Material State] This is the position of each and every item Opal
   cares about
-\item[ResourceAssignments] This is the current occupation and position
+\item[Resource State] This is the current occupation and position
   of each and every resource.
-\item[Pre-Announcements] This is an estimated future position of a set
+\item[Workorder State] This wether or not Workorders are active and
+  what they are doing.
   of items.
 \item[Time] This is the current time of the world
 \end{description}
@@ -107,6 +118,9 @@ includes:
 %------------------------------------------------------------
 \input{items}
 \input{monitoring}
+\input{workorders} 
+\input{productionBatch}
+\input{whatOpalDoes}
 %------------------------------------------------------------
 
 \end{document}

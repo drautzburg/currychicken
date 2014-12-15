@@ -11,11 +11,11 @@ world. The question is: how do we obtain this state?
 
 \subsection{Imperfect sensors}
 
-If our world is equipped with multiple sensors, then their readings
-could tell us what items are where. However, this requires quite a
-dense net of sensors. Our system has a conception of
+If the real world is equipped with multiple sensors, then their
+readings could tell us what items are where. However, this requires
+quite a dense net of sensors. Our system has a conception of
 \emph{interesting} locations and the sensor net would need to observe
-at least all these locations. 
+at least all these locations.
 
 Furthermore we are interested in items and the sensors would have to
 observe individual items. In the real world sensors are often less
@@ -53,45 +53,51 @@ if we know that the item travels |A -> B -> C| and we know how long
 each leg takes, then we can \emph{interpolate} between sensor
 readings. 
 
+\needspace{14em}
 I believe, sensor readings can be categorized in the following way:
 
 \begin{description}
-\item[seen] One such message could be a scan-event, which tells us
-  that an Item was \emph{seen} at a certain location at a certain
-  instant. 
+\item[seen] This tells us that an Item was \emph{seen} at a certain
+  location at a certain instant.
 
-\item[unseen] Another message could tell us e.g. that a container is
-  completely unloaded. This tells us, that there are no more items in
-  the container. In contrast to the first message this does not tell
-  us where items actually are. It rather tells us, where they are
-  certainly \emph{not}: no item can be in that container.
+\item[count] This tells us the item count at a certain location at a
+  certain instant.
+
+  An interesting case is the situation where the item count is
+  zero. Such messages can be seen as \emph{completion} messages. It
+  could e.g. tell us that the unloading of a container has completed
+  and there are no more items in the container. In contrast to |seen|
+  messages, this does not tell us where the items actually are, it
+  only tells us where they are \emph{not}.
 
   A variation of the second message is the information that all Items
   in a given container have been scanned. This tells us, that
   \emph{only} those scanned items were in the container, i.e. all
-  items which were not scanned were certainly not in the container.
+  items which were not scanned were certainly not in the container. I
+  am not sure if such messages occur in the real world.
 \end{description}
 
-\begin{figure}[htb!]
-\centering
-\includegraphics[width=8cm]{unpackComplete.eps}
-\caption{Locations of items after ``unpacking complete''}
-\end{figure}
-
-\ding{228} It is important to understand that an \emph{unpacking
+%\ding{228} 
+\begin{note}[Caution]
+\label{note:unpack}
+It is important to understand that an \emph{unpacking
   completed} message does \emph{not} tell us, that all items in the
 container are now at the Spot where the unpacking process put them
 (|Area 51|). They could well have been moved away while the unpacking
 was still in progress.
 
-|Unseen| messages will only convey information if we have the
+\includegraphics[width=8cm]{unpackComplete.eps}
+
+\end{note}
+
+|count=0| messages will only convey information if we have the
 possibility to reason like ``well, those items are no longer in that
 container, so they must be in one of these other locations''. This
 requires that we have an idea of where items could \emph{possibly} be.
 
 It appears that it is not so easy to come up with a model, which is
-capable of interpolating sensor readings by taking knowledge about
-real world processes into account. But read
+capable of interpolating sensor readings by taking into account
+knowledge about real world processes. But read
 \href{http://rsif.royalsocietypublishing.org/content/9/77/3411.long}{this:}
 
 \begin{quotation}
@@ -108,6 +114,7 @@ real world processes into account. But read
   \end{itemize}
 \end{quotation}
 
+\needspace{8em}
 \subsection{Conclusion for now}
 
 It turns out that 
@@ -154,10 +161,12 @@ Sim :: ProcessModel
 This is exactly like |Mon| except there are no sensor readings to
 consider.
 
-\ding{228} It appears that the difference between |Mon| and a
-simulation is marginal. If |Mon| is capable of interpolating then we
-can just have it interpolate into the future, i.e. beyond the latest
-sensor reading and we get a simulation.
+\begin{note}[Insight]
+It appears that the difference between |Mon| and a simulation is
+marginal. If |Mon| is capable of interpolating then we can just have
+it interpolate into the future, i.e. beyond the latest sensor reading
+and we get a simulation.
+\end{note}
 
 %\begin{figure}[htb!]
 %\centering

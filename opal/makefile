@@ -2,8 +2,8 @@
 export DFD_STORE
 export EMPTY_LHS
 
-opal.pdf: opal.tex items.tex monitoring.tex \
-	  interpolating.eps  unpackComplete.eps
+opal.pdf: opal.tex items.tex monitoring.tex workorders.tex productionBatch.tex whatOpalDoes.tex \
+	  interpolating.eps  unpackComplete.eps workorderStates.eps whatOpalDoes.eps stateDependencies.eps
 	pdflatex opal.tex
 
 
