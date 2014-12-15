@@ -1,7 +1,7 @@
 digraph d {
 	 node [fontname = "Arial"];
 	 edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
-	 graph[nodesep=1]
+	 graph[nodesep=0.5]
 	 overlap = scale;
 rankdir=TB
 	subgraph sensor {
@@ -18,6 +18,7 @@ rankdir=TB
 		node [shape=rectangle, style="filled,rounded" fillcolor="#EEEEEE"]
 		rms [label="RMS\n(badging)"]
 		sensors[label="Sensors"]
+		historic[label="Historic"]
 		planners[label="Planners"]
 	}
 	subgraph state {
@@ -33,5 +34,6 @@ MaterialState -> WorkorderState[label="become \lbusy/idle"]
 rms->ResourceState[label="resource-Pool\lchanges"]
 sensors->MaterialState[label="Sensor\lreadings"]
 planners->WorkorderState[label=" activation/\l decativation rules"]
-		
+historic -> MaterialState
+
 }

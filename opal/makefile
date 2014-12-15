@@ -38,7 +38,7 @@ touch:
 	touch *.lhs
 
 clean:
-	rm -f *.pdf *.eps *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
+	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
 
 
 
