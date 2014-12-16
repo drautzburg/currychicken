@@ -58,7 +58,7 @@ collection of |Items|.
 
 If Batches were input to Production Orders then one could reason about
 the progress of a Production Order. A Production Order would be done
-if its input Batches become empty.
+if its input Batches are fully consumed.
 
 However, earlier we said that the state of a Production Order can be
 derived from the states of its Workorders. This does make more sense,
@@ -66,10 +66,9 @@ because even though the input Batches have become empty, some
 workorder may still be processing these items. Look at the ``unpacking
 complete'' example in Note~\ref{note:unpack}. Even though the input
 batch (the container) was completely empty, items were still being
-processed by the |trans| Workorder. If we define a Production Order,
-which ends \emph{after} |trans|, then we better not declare it as
-completed until \emph{all} Items were seen at the destination of
-|trans|.
+processed by |trans|. If we define a Production Order, which ends
+\emph{after} |trans|, then we better not declare it as completed until
+\emph{all} Items were seen at the destination of |trans|.
 
 But even when we have a Production Order which contains only a single
 Workorder we're still in trouble. What if we decide to only unpack

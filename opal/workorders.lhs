@@ -44,7 +44,7 @@ not enough work has piled up to justify the binding of resources.
 
 \begin{figure}[htb!]
 \centering
-\includegraphics[width=12cm]{workorderStates.eps}
+\includegraphics[width=10cm]{workorderStates.eps}
 \caption{Workorder States}
 \end{figure}
 

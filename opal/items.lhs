@@ -17,18 +17,22 @@ Item itself. We call \emph{where the item is} its
   the model we use here}.
 
 
-Items always belong to a |Product|. A Product is a classification of
-Items, such that Items of the same Product are usually processed in
-the same fashion. All letters for a given Postman can e.g. seen as
-belonging to the same Product. For a single letter, the product would
-be characterized by its destination (e.g by a Sortcode) and other
-non-address attributes.
+Items always belong to a |Product|. A Product\footnote{In the Opal
+  contexts products are called |Batch Declarations|} is a
+classification of Items, such that Items of the same Product are
+usually processed in the same fashion. All letters for a given Postman
+can be seen as belonging to the same Product. For a single letter, the
+product would be characterized by its destination (e.g by a Sortcode)
+and other non-address attributes. There may also be Products for
+|unsorted letters| and the like.
 
 Finally we assume every items carries an Id.
 
-\needspace{4em}
-Hence the type of an Item depends of the type of the Ids |i| , the
-type of the Products |p| and the way we describe Spots |s|.
+\needspace{4em} Hence the type of an Item depends of the type of the
+Ids |i| , the type of the Products |p| and the way we describe Spots
+|s| \footnote{Shouldn't that be |Item i p l| where l is the location
+  type? This would allow probalilistic Locations}. It would also
+simplify |putItem|
 
 %if False
 \begin{code}
@@ -39,9 +43,9 @@ import Data.Maybe
 
 \begin{code}
 data Location i s = At s | In i
-                    deriving (Eq, Show)
+                    derivi2ng (Eq, Show)
 
-data Item i p s = Item i p (Location i s)
+data Item i p s = Item i p (Location i s) 
                   deriving (Eq,Show)
 \end{code}
 
@@ -148,7 +152,7 @@ exUnpack cnt dt (t, items) =
         loc'     = spotOf (idOf i) items
 \end{code}
 
-
+\needspace{8em}
 Some helpers to print the result, whose implementation we omit in
 this document.
 

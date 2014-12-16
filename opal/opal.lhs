@@ -111,7 +111,6 @@ includes:
   of each and every resource.
 \item[Workorder State] This wether or not Workorders are active and
   what they are doing.
-  of items.
 \item[Time] This is the current time of the world
 \end{description}
 

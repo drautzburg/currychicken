@@ -17,7 +17,7 @@ quite a dense net of sensors. Our system has a conception of
 \emph{interesting} locations and the sensor net would need to observe
 at least all these locations.
 
-Furthermore we are interested in items and the sensors would have to
+Furthermore we are interested in |Items| and the sensors would have to
 observe individual items. In the real world sensors are often less
 precise and may just count or weigh a whole set of items as oposed to
 registering them each individually.
@@ -86,7 +86,7 @@ container are now at the Spot where the unpacking process put them
 (|Area 51|). They could well have been moved away while the unpacking
 was still in progress.
 
-\includegraphics[width=8cm]{unpackComplete.eps}
+\includegraphics[width=10cm]{unpackComplete.eps}
 
 \end{note}
 
