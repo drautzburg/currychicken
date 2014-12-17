@@ -55,3 +55,28 @@ ask for the State at any Point in time, past, present or future. Also
 we cannot assume that the current and past states are known
 precisely. They may be known with a higher certainty than future
 states though.
+
+\subsection{Comparison to current approach}
+
+At first glance the idea of sate movies appears weird. But at a closer
+look it turns out that this is well in line with our current
+``traditional'' approach.
+
+\begin{figure}[htb!]
+\centering
+\includegraphics[width=10cm]{opalTimeline.jpg}
+\caption{An existing state movie}
+\end{figure}
+
+Our GUIs quite frequently show things in chronological order. This is
+exactly the same as a state movie. This movie is contiously being
+updated due to inputs from the real world and inputs from the
+user. Also currently we do not hesitate to let this movie run into the
+future (think: planned Production Orders).
+
+My approach only differs insofar as it makes this paradigm the core of
+Opal.
+
+Another difference is the degradation of |Production Orders| and
+|Batches|, which are quite prominent in the traditional approach.
+

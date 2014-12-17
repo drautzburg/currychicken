@@ -1,7 +1,7 @@
 digraph d {
 	 node [fontname = "Arial"];
 	 edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
-	 graph[nodesep=0.2]
+	 graph[nodesep=0.6]
 	 overlap = scale;
 # rankdir=LR
 	subgraph sensor {

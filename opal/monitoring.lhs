@@ -91,9 +91,10 @@ was still in progress.
 \end{note}
 
 |count=0| messages will only convey information if we have the
-possibility to reason like ``well, those items are no longer in that
-container, so they must be in one of these other locations''. This
-requires that we have an idea of where items could \emph{possibly} be.
+possibility to reason in the vein of: ``well, those items are no
+longer in that container, so they must be in one of these other
+locations''. This requires that we have an idea of where items could
+\emph{possibly} be.
 
 It appears that it is not so easy to come up with a model, which is
 capable of interpolating sensor readings by taking into account

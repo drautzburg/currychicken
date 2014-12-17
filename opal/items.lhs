@@ -43,9 +43,9 @@ import Data.Maybe
 
 \begin{code}
 data Location i s = At s | In i
-                    derivi2ng (Eq, Show)
+                    deriving (Eq, Show)
 
-data Item i p s = Item i p (Location i s) 
+data Item i p s = Item i p (Location i s)
                   deriving (Eq,Show)
 \end{code}
 
@@ -73,9 +73,8 @@ it is not essential and only needed to craft some examples later on.
 
 \begin{code}
 -- predicates
-itemIs   :: (Eq i) => i -> Item i p s -> Bool
-itemIsAt :: (Eq s) => s -> Item i p s -> Bool
-itemIsIn :: (Eq i) => i -> Item i p s -> Bool
+itemIs        :: (Eq i) => i -> Item i p s -> Bool
+itemIsLocated :: (Eq s, Eq i) => (Location i s) -> Item i p s -> Bool
 
 -- accessors
 idOf :: Item i p s -> i
@@ -85,8 +84,7 @@ idOf :: Item i p s -> i
 spotOf :: (Show i, Eq i) => i -> [Item i p s] -> s
 
 -- moving items
-putItemAt :: s -> Item i p t -> Item i p s
-putItemIn :: i -> Item i p t -> Item i p s
+putItem :: (Location  i s) -> Item i p l -> Item i p s
 \end{code}
 
 We omit the trivial implementations of these functions\footnote{The
@@ -96,17 +94,8 @@ We omit the trivial implementations of these functions\footnote{The
 %if False
 \begin{code}
 itemIs id (Item i _ _) = i==id
-
-itemIsAt loc (Item i p (At s)) = s==loc
-itemIsAt loc _                 = False
-
-itemIsIn cont (Item i p (In c)) = c == cont
-itemIsIn cont _                 = False
-
-putItemAt loc (Item i p _) = Item i p (At loc)
-
-putItemIn cnt (Item i p _) = Item i p (In cnt)
-
+itemIsLocated loc (Item i p l) = l==loc
+putItem loc (Item i p _) = Item i p loc
 idOf (Item i _ _) = i
 
 
@@ -143,12 +132,12 @@ So here is the implementation:
 
 \begin{code}
 exUnpack cnt dt (t, items) = 
-  case partition (itemIsIn cnt) items of
+  case partition (itemIsLocated (In cnt)) items of
     ([],_)          -> [] -- No more Items in the container
     (i:is, others)  -> (t+dt, items') : exUnpack cnt dt (t+dt, items')
       where
         items'   = i' : (is ++ others)
-        i'       = putItemAt loc' i 
+        i'       = putItem (At loc') i 
         loc'     = spotOf (idOf i) items
 \end{code}
 
@@ -179,7 +168,7 @@ items as |In| a container.
 
 \needspace{8em}
 \begin{verbatim}
-*Main> exRun
+*Main> exRun (0,exItems)
 t=0
 	Item 1 "Container" (At "Area51")
 	Item 2 "Item" (In 1)

@@ -42,12 +42,6 @@ workorder may chose not to do anything even though the conditions in
 Note~\ref{thm:changeLoc} are satisfied, because it anticipates, that
 not enough work has piled up to justify the binding of resources.
 
-\begin{figure}[htb!]
-\centering
-\includegraphics[width=10cm]{workorderStates.eps}
-\caption{Workorder States}
-\end{figure}
-
 So a workorder can be in one of these states
 
 \begin{description}
@@ -59,4 +53,10 @@ So a workorder can be in one of these states
 \item[Active-busy] There is something to do and resources are
   available. Transform an item.
 \end{description}
+
+\begin{figure}[htb!]
+\centering
+\includegraphics[width=10cm]{workorderStates.eps}
+\caption{Workorder States}
+\end{figure}
 

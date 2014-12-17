@@ -53,6 +53,9 @@
 \begin{abstract}
 \end{abstract}
 
+\begin{center}
+\includegraphics[width=3cm]{AtTheMovies.jpg}
+\end{center}
 
 \tableofcontents 
 \listoffigures
