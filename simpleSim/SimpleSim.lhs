@@ -257,10 +257,21 @@ type Throughput = Double
 
 \subsubsection{Accessing}
 \begin{code}
--- accessors
-seStartTime (b,(t1,t2),tp) = t1
-seEndTime   (b,(t1,t2),tp) = t2
-seThroughput(b,(t1,t2),tp) = tp 
+-- getters
+sgStartTime (b, (t1, t2), tp) = t1
+sgEndTime   (b, (t1, t2), tp) = t2
+sgInterval  (b, (t1, t2), tp) = (t1,t2)
+sgTp        (b, (t1, t2), tp) = tp 
+
+-- setters
+sgSetStartTime t1' (b, (t1, t2), tp) = (b,(t1',t2 ), tp)
+sgSetEndTime   t2' (b, (t1, t2), tp) = (b,(t1, t2'), tp)
+sgSetInterval  (t1',t2') (b, (t1, t2), tp) = (b,(t1', t2'), tp)
+sgSetTp        tp' (b, (t1, t2), tp) = (b,(t1, t2 ), tp')
+
+-- simple operations
+sgDelay        dt  (b, (t1, t2), tp) = (b, (t1+dt, t2+dt), tp)
+sgScaleTp      k   (b, (t1, t2), tp) = (b, (t1, t1 + k*(t2-t1)), tp/k)
 \end{code}
 
 \subsubsection{Splitting}
@@ -361,7 +372,7 @@ stSortByStart :: Stream c -> Stream c
 
 %if source
 \begin{code}
-stSortByStart= sortBy (compare `on` seStartTime) 
+stSortByStart= sortBy (compare `on` sgStartTime) 
 \end{code}
 %endif
 
@@ -385,23 +396,39 @@ stMergeAll st  = foldr stMerge [] st
 
 \needspace{4em}
 
-Imposing a Delay on a Stream is also pretty simple. We simply add the
-delay to all start and end times of each stream element in the
-list. When we filter a Stream we must take into account, that this
-also reduces its throughput.
-
+Most of the Segment function can eaily be implemented as Stream
+functions, simply by applying them to all Segments in the Stream.
 
 \begin{code}
-stDelay  :: Time -> Stream c -> Stream c
+stSetStartTime:: Time       -> Stream c -> Stream c
+stSetEndTime  :: Time       -> Stream c -> Stream c
+stSetInterval :: Interval   -> Stream c -> Stream c
+stSetTp       :: Throughput -> Stream c -> Stream c
+stDelay       :: Time       -> Stream c -> Stream c
+stScaleTp     :: Double     -> Stream c -> Stream c
+
+\end{code}
+
+%if source
+\begin{code}
+stDelay dt         = map (sgDelay dt)
+stSetStartTime t1' = map (sgSetStartTime t1')
+stSetEndTime t2'   = map (sgSetStartTime t2')
+stSetInterval i    = map (sgSetInterval i)
+stSetTp tp         = map (sgSetTp tp)
+stScaleTp k        = map (sgScaleTp k)
+\end{code}
+%endif
+
+We can filter a Stream, which alters the underlying batches and also
+scales down the throughputs.
+
+\begin{code}
 stFilter :: Filter c -> Stream c -> Stream c
 \end{code}
 
 %if source
 \begin{code}
-stDelay dt s = map delay s
-  where
-    delay (b,(t1,t2),tp) = (b, ((t1+dt),(t2+dt)), tp)
-
 stFilter f s = map f' s
   where
     f' (b,i,tp) =
@@ -410,6 +437,7 @@ stFilter f s = map f' s
         tp' = tp * (baCount b') / (baCount b)
       in
        (b',i,tp')
+
 \end{code}
 %endif
 
@@ -435,9 +463,7 @@ stUnpack :: Ord c => Stream c   -> Stream c
 
 %if source
 \begin{code}
-unpack   :: (c, Count, Material c) -> Material c
-unpack = subs
-maUnpack (M ms) = maMergeAll $ map unpack ms
+maUnpack (M ms) = maMergeAll $ map subs ms
 baUnpack (name, m) = (name, maUnpack m)
 
 seUnpack (b, i, tp) = (b', i, tp')
@@ -563,58 +589,80 @@ times.
 
 If we consider a Stream where all Seqments are aligned, we can treat
 it like a single Segment. In Figure (\ref {fig:throttle}), the black
-line represents the build-up of material and the dahed blue lines
-represent the break-down. The build-up comes with a required
-throughput $reqTp$, i.e. the throughput at which the material comes
-in. The blue lines come with a $maxTp$, i.e. the throughput to which
-we want to throttle the Stream.
+line represents the build-up of material and the dashed blue and green
+lines represent break-downs with different throughputs $tpMax$. The
+build-up comes with a required throughput $tpReq$, i.e. the throughput
+at which the material comes in. 
 
 There is a distinct point in time $t_0$. If we start the breakdown
-there, then we will finish when the input Stream stops. Note that if
-$tpMax < reqTp$, i.e. when we really throttle, then $t_0$ will be
-smaller than $t_1$ and loose all significance.
+there, then we will finish when the input Stream stops. 
 
-The output will have a throughput of $maxTp$. If we start later, then
-this does not make much difference. In a way, we can consider all
-Material to be buffered and we call this the \emph{pastMaterial}
-situation.
+To compute $t_0$ we reason as follows. The total amount of Material
+is $M = (t_2 - t_1) tpReq$. To process this Material at $tpMax$ we
+need a duration of $\Delta t = M/tpMax$. To obtain $t_0$ we must
+subtract this duration from $t_2$.
 
 \begin{eqnarray}
-t_0  &=& t_2 - (t_2 - t_1)\frac{reqTp}{tpMax}
+t_0  &=& t_2 - (t_2 - t_1)\frac{tpReq}{tpMax}\notag \\
+\notag\\
+k    &=& \frac{tpReq}{tpMax}\\
+\notag\\
+t_0  &=& t_2 - k(t_2 - t_1)
 \end{eqnarray}
 
-If however we start the breakdown before $t_1$, then all material is
-new, unbuffered Material. Nothing will happen before $t_1$ and then the
-effective throughput will be the minimum of $tpMax$ and $reqTp$. In
-case $tpMax < reqTp$ the break down will finish after the material
-stopped (green line). Otherwise the material will be broken down at
-the same rate at which it comes in, as we have more than enough
-throughput available. We call this the \emph{futureMaterial}
-situation.
+With $k=1$ we can process Material as fast as it comes in. In this
+case $t_0 = t_1$. With $k>1$ Material comes in faster than we can
+process it. Since $t_2 - t_1 > 0$ we subtract more from $t_2$ and
+$t_0$ becomes smaller than $t_1$. In this case we don't care much
+about $t_0$ because we can only start processing at $t_1$ and not
+earlier.
 
-If we start the break-down anywhere between $t_1$ and $t_0$, then the
-incoming material will be split into a past and a future part. The
-past part will be broken down as any other past part, i.e. the
-resulting throughput will be determined by $maxTp$. The future part
-will be broken down like any other future part, i.e. the resulting
-throughput will be the minimum of $reqTp$ and $tmMax$.
+With $k<1$ we can process faster than Material comes in. This is the
+interesting case. Here $t_0 >t_1$ and as $k$ approaches $0$, $t_0$
+approaches $t_2$.
 
-Throughout the computation we will maintain a time $t_x$, which is
-\emph{where we are}. Initially $t_x$ will be $- \infty$. Each
-iteration appends to the output Stream and computes a new $t_x$.
+Throughout the computation we will maintain a time $t_x$, which is the
+time up to which the output is computed. Initially $t_x$ will be $-
+\infty$. Depending on $t_0$ and $t_x$ we find three different
+situations.
+
+\begin{description}
+\item[$t_x> t_0$]\hfill\\ If $t_x> t_0$, then all Material is ``past''
+  buffered Material. We can process it as fast as we can and it does
+  not matter how fast it comes (or came) in.
 
 \begin{eqnarray}
-t_x < t_1 (futureMaterial)\\
-tp'   &=& min (tpMax, reqTp) \\
-t_x'  &=& t_1 + \frac{(t_2-t_1) reqTp}{tp'}\\
-t_1 < t_x < t_0 \\
-t_x'  &=& \frac{t_1 - t_x\frac{tpMax}{reqTp}}{1 -\frac{tpMax}{reqTp}}\\
-tp_1' &=& tpMax \\
-tp_2' &=& reqTp \\
-t_x > t_0 (pastMaterial) \\
 tp'   &=& tpMax \\
-t_x'  &=& t_x + (t_2 - t_1) \frac{reqTp}{tpMax}
+\notag\\
+t_x'  &=& t_x + \frac{(t_2-t_1) tpReq}{tp'}
 \end{eqnarray}
+
+
+\item[$t_x < t_1$]\hfill\\ If $t_x < t_1$, then all Material is
+  ``future'' Material. We can only process it as fast as it comes in,
+  or slower, but not faster and we can only start at $t_1$ but not
+  earlier.
+
+\begin{eqnarray}
+tp'   &=& min (tpMax, tpReq) \\
+\notag\\
+t_x'  &=& t_1 + \frac{(t_2-t_1) tpReq}{tp'}
+\end{eqnarray}
+
+\item[$t_1 < t_x < t_0$]\hfill\\ There is a third case, namely when
+  $t_1 < t_x < t_0$. This can only happen if $k<1$, i.e. when we can
+  process faster than required (blue lines). Here we end up with two
+  parts. One can be processed at full speed $tpMax$ like ``past''
+  Material and the second can be processed at $tpReq$.
+
+\begin{eqnarray}
+tp'   &=& tpMax \\
+t_x'  &=& \frac{t_x tpMax - t_1 tpReq}{tpMax - tpReq}\\
+\notag\\
+tp''   &=& tpReq \\
+t_x''  &=& t_2
+\end{eqnarray}
+\end{description} 
 
 
 In oder to obtain nicely aligned Streams we first get a set of
@@ -624,7 +672,7 @@ cause small gaps where there is no throuhgput at all, or overlaps with
 a spike in throughput.
 
 \begin{code}
--- get all the times, i.e.  where a Segment starts or ends
+-- get all the times, i.e.  where Segments start or end
 stTimes :: Stream c -> [Time]
 \end{code}
 
@@ -647,12 +695,6 @@ i.e.  have either matching start and end times or do not share a
 common point in time. Then we group the Segments into groups with
 matching start and end times. 
 
-Finally we compute the total required throughput in each Interval. If
-that thoughput is below the trottle threshold, then all is fine. If it
-is above the threshold, we scale down the throughputs and postpone the
-end-times. Throughout the operation we maintain a \verb!delay! which
-expresses by how much time we lag behind the original times.
-
 \begin{code}
 stPartition :: Stream c -> Stream c
 stGroup     :: Stream c -> [Stream c]
@@ -668,68 +710,46 @@ stPartition sgs = partition (stTimes sgs) sgs
 
 stGroup st = (group . stSortByStart) $ stPartition st
   where
-    group = groupBy ((==) `on` seEndTime) 
+    group = groupBy ((==) `on` sgEndTime) 
+\end{code}
 
-
-stThrottle tpMax st = stRoundTimes $ fst $ stThrottleDelay tpMax st
-
--- Throttle a stream and return a new stream and a new delay
-stThrottleDelay :: Throughput -> Stream c -> (Stream c, Time)
-stThrottleDelay tpMax st = foldl' (throttleGroup tpMax) ([],0) (stGroup st)
-
-throttleGroup' :: Throughput -> (Stream c,Time) -> Stream c -> (Stream c,Time)
-throttleGroup' tpMax (s,delay) sgs
-  | tpSum <= tpMax = (s ++ stDelay delay sgs , delay)
-  | otherwise     = (s ++ stDelay delay sgs' , delay') 
-  where
-    -- all t1,t2 are the same, so we pick the first Segment in a group
-    (_b, (t1,t2),_tp) = head sgs
-    -- total required tp for this group of Segments
-    tpSum  = (sum $  map seThroughput sgs )
-
-    -- the calculations from equations (\ref{eqn:throttle}) and following
-    k      = tpMax /tpSum
-    dt     = t2 - t1
-    dt'    = dt/k
-    tp'    = dt*k
-
-    -- increase delay
-    delay' = delay + (dt' - dt)
-
-    -- throttle a single Segment
-    sgThrottle (b,(t1,t2), tp) = (b, (t1, t1 + dt'), tp')
-
-    -- throttle all segments in the group
-    sgs'   = map sgThrottle sgs
-
+\needspace{60em}
+Finally here is the core of the throttle operation
+\begin{code}
+stThrottle tpMax st = stRoundTimes $ 
+                      fst $ 
+                      foldl' (throttleGroup tpMax) ([],-100) (stGroup st)
 
 throttleGroup :: Throughput -> (Stream c,Time) -> Stream c -> (Stream c,Time)
 throttleGroup tpMax (s,tx) sgs
   -- future Material
-  | tx <= t1 = let tp' = min reqTp tpMax
-                   tx' = t1 + (t2-t1)*reqTp/tp'
-                   s'  = map (sgThrottle (tp'/reqTp)) sgs
-              in (s ++ stRoundTimes s', trace "future" tx')
-                  
-  | t1 < tx && tx < t0 = let tx' = (t1 - tx*tpMax/reqTp)/(1 - tpMax/reqTp)
-                             s'  = map (sgThrottle (tpMax/reqTp)) sgs
-                             s'' = map (sgStart tx') sgs
-                         in (s ++ stRoundTimes s' ++ stRoundTimes s'', trace "middle" t2)
+  | tx <= t1           = let tp' = min tpReq tpMax
+                             k   = tpReq/tp'
+                             tx' = t1 + k*(t2-t1)
+                             s'  = stScaleTp k sgs
+                         in (s ++ s', tx')
+  -- middle Material           
+  | t1 < tx && tx < t0 = let tp' = tpMax
+                             k   = tpReq/tp'
+                             tx' = (tx * tpMax - t1*tpReq)/(tpMax - tpReq)
+                             s'  = stSetInterval (tx,tx') $ stScaleTp k sgs
+                             -- future
+                             tp'' = tpReq
+                             tx'' = t2
+                             s'' = stSetStartTime tx' sgs
+                         in (s ++ s' ++ s'', t2)
   -- past material
-  | tx >= t0 = let tp' = tpMax
-                   tx' = tx + (t2-t1)*reqTp/tp'
-                   s'  = map (sgThrottle (tp'/reqTp)) sgs
-              in (s ++ stRoundTimes s', trace "past" tx')
+  | tx >= t0           = let tp' = tpMax
+                             k   = tpReq/tp'
+                             tx' = tx + k*(t2-t1)
+                             s'  = stDelay (tx - t1) $ stScaleTp k sgs
+                         in (s ++ s', tx')
                              
   where
     -- all t1,t2 are the same, so we pick the first Segment in a group
-    (_b, (t1,t2),_tp) = head sgs
-    reqTp             = sum $  map seThroughput sgs 
-    t0                = t2 - (t2-t1)*reqTp/tpMax
-    -- k > 1 speeds up
-    sgThrottle k (b,(t1,t2), tp) 
-                      = (b, (t1, t1 + (t2-t1)/k), trace (show k) tp*k)                        
-    sgStart t (b,(t1,t2), tp) = (b, (t,t2), tp)
+    (t1,t2) = sgInterval $ head sgs
+    tpReq   = sum $  map sgTp sgs 
+    t0      = t2 - (t2-t1)*tpReq/tpMax
                       
 
 \end{code}
@@ -737,8 +757,8 @@ throttleGroup tpMax (s,tx) sgs
 
 
 When we apply a Throttle we expect the throughput to never exceed the
-\verb!maxTp! imposed by \verb!Throttle!. Furthermore we expect the
-whole thing to take longer, the more we reduce \verb!maxTp!. 
+\verb!tpMax! imposed by \verb!Throttle!. Furthermore we expect the
+whole thing to take longer, the more we reduce \verb!tpMax!. 
 
 This is indeed the case. Cutting off a little bit off the top only has
 a small effect on the duration, but more agressive reductions extend
@@ -815,7 +835,7 @@ sfInStream1 :: Stream SfClassification
 sfInStream1 = unbuffer (mkSfBatch1 "b1") (1,100) 100
 
 sfInStream2 :: Stream SfClassification
-sfInStream2 = unbuffer (mkSfBatch1 "b2") (50,150) 100
+sfInStream2 = unbuffer (mkSfBatch1 "b2") (80,150) 100
 
 \end{code}
 
