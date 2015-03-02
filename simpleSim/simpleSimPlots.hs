@@ -24,8 +24,8 @@ xplotAll file st = plotListsStyle [EPS (file++".eps")] values
 
 
 plotAll :: String -> Stream c -> IO Bool
---plotAll file st = P.plot (P.PNG (file ++ ".png")) (
-plotAll file st = P.plot P.X11 (
+plotAll file st = P.plot (P.PNG (file ++ ".png")) (
+--plotAll file st = P.plot P.X11 (
   plot "Totals" P.Black totals
   :
   plot "Throughputs" P.Red throughputs

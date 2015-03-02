@@ -1,4 +1,4 @@
-include ~/texmakefile
+include ../texmakefile
 
 plots: simpleSimPlots.exe
 	ghc --make simpleSimPlots.hs
