@@ -30,7 +30,6 @@ import Data.List
 import Data.List.Ordered
 import Debug.Trace
 import Text.Printf
-import Text.Show.Pretty as Pr
 
 type Day = Int
 \end{code}
