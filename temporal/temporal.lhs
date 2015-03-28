@@ -50,6 +50,26 @@ we get a lot of power for free.
 
 \section{Temporal Data}
 
+A |Temporal| value is a value which changes over time at discrete
+points in time. You can see a TV-channel as a |Temporal Image|. When
+you switch channels with your remote, you get a |Temporal
+Channel|. But since |Channel| is a |Temporal Image|, you'll end up
+with a |Temporal (Temporal Image)|.
+
+Obviously Temporal can be nested. You can flatten a |Temporal
+Temporal| and in the TV-example you get a |Temporal Image| which will
+represents what you acutually see on the screen.
+
+|Temporal| itself is not a type. It is something, which takes a type
+and creates a new type. This is akin to constructions like |Stack| or
+|List| which by themselves are not types either. A Stack of Int
+however, is a type. Hence you can turn any Type into its Temporal
+counterpart.
+
+We will construct |Temporal| from a default value and a list of
+changes. A Temporal without any changes behaves mostly like a plain
+time-invariant value. 
+
 \subsection{Changes}
 
 A Change associates a point in time with some arbitrary value of any
@@ -65,9 +85,12 @@ which extract the time or the value from a change respectivly.
 %if False
 \begin{code}
 import Data.List.Ordered
+import Control.Monad
+import qualified Data.DList as D
 import Control.Applicative
 import qualified Data.Foldable as F
 import System.TimeIt
+import Debug.Trace
 \end{code}
 %endif
 
@@ -101,6 +124,9 @@ how to test for equality, i.e. we might want to remove values which
 are just \emph{close enough}. Hence the function which determines
 whether or not two values are equal enough is a parameter to
 |eNubBy| and so is an initial value |xd| to comapare with.
+
+Nubbing does change the semantics of a Temporal somewhat, namely when
+you insert another change between two equal changes.
 
 \begin{code}
 -- remove successive duplicate values from a list of Changes
@@ -146,6 +172,9 @@ eAlign (xd,yd) cxss@((Chg tx xi):cxs) cyss@((Chg ty yi):cys)
                      in Chg ty c : eAlign c cxss cys 
 \end{code}
 
+We'll use this function later on to define higher-order functions on
+Temporals. It is not strictly needed but provides better performance
+than the alternative. See (\ref{applicative})
 
 \subsection{Temporal}
 
@@ -166,8 +195,7 @@ tChangeValues tpr = td tpr : map cv (tc tpr)
 
 \end{code}
 
-
-\subsubsection{Time Windows}
+\subsubsection{Some handy functions}
 
 Temporals can be limited by Time. You can discard old changes and only
 keep the ones which occur \emph{after} a certain point in time
@@ -221,7 +249,10 @@ tNubBy eq (Temporal xd xs) = Temporal xd (eNubBy eq xd xs)
 
 \end{code}
 
-\subsubsection{Instances}
+
+
+\subsection{Instances}
+
 We will now make |Temporal| an instance of several widely used
 typeclasses. This buys us a lot of operations without having to write
 any code.
@@ -231,15 +262,19 @@ showing its first changes.
 
 \begin{code}
 -- Natural numbers occurring at even times
-exNat  = Temporal 0 (map (\x -> Chg (2*x) x) [1..100000])
+exNat :: Temporal Int
+exNat  = Temporal 0 (map (\x -> Chg x (fromIntegral x)) [1..100000])
 
 -- A Temporal which drops from 10 to zero
+ext2 :: Temporal Int
 ext2   = Temporal 10 [Chg 5 0]
 
 -- Show the first changes only
-exShow = tWindow (0,10)
+exShow = tWindow (0,7)
 
 \end{code}
+
+\subsubsection{Foldable}
 
 The |Foldable| instace allows us to accumulate the values of a
 |Temporal| using functions like |foldr| or |foldl| which take a
@@ -261,6 +296,7 @@ Obviously |F.foldr (+) 0| is the same as |sum|, but the package
 |*Main> F.sum exNat|\\
   \eval{F.sum exNat}
 
+\subsubsection{Functor}
 
 The |Functor| instance allows us to map an unary function over a
 |Temporal|
@@ -277,6 +313,81 @@ squares, which occur at the same times.
 |*Main> exShow $  fmap (^2) exNat|\\
   \eval{exShow $  fmap (^2) exNat}
 
+\subsubsection{Monad}
+
+You can imagine a |Monad| as something which can be nested and
+flattened using a function typically called |join|. A |List| is a
+Monad, because you can have Lists of Lists and you can flatten a List
+of Lists into a List. In our case we'll have to deal with Temporal
+Temporals.
+
+We define a the Monad instance with respect to the flattening function
+|tJoin|. At its heart is |joinChs| to handle a List of |Change
+(Temporal a)|. The Change has a change-time, and tJoin takes the
+default from the embedded Temporal and schedules it to the
+change-time, which turns it into a plain Change. Then it takes the
+Changes of the embedded Temporal and filters those which occur beween
+this change-time and the next change-time. The remaining code deals
+with things at the beginning or end of the flattening.
+
+\begin{code}
+
+tJoin :: Temporal (Temporal a) -> Temporal a
+tJoin (Temporal tdef [])  = Temporal (td tdef) (tc tdef)
+tJoin (Temporal tdef tchs) = Temporal (td tdef) (dChs ++ joinChs tchs)
+        where
+                  
+            dChs = let t2 = (ct.head) tchs -- next change in outer
+                   in tSchedTo t2 tdef
+
+            joinChs :: [Change (Temporal a)] -> [(Change a)]
+            joinChs ((Chg t1 tpr) : []) 
+                    = tSchedFrom t1 tpr
+            joinChs ((Chg t1 tpr):tchs) 
+                    = let t2 = (ct.head) tchs -- next change in outer
+                      in tSchedBetween t1 t2 tpr ++ joinChs tchs
+
+
+            tSchedTo t2 (Temporal tdef tchs) = changes
+                    where
+                        changes = [c | c<-tchs, ct c < t2 ]
+
+            tSchedBetween t1 t2 (Temporal tdef []) = [(Chg t1 tdef)] 
+            tSchedBetween t1 t2 (Temporal tdef (tch:tchs))
+                    | t1 < ct tch = Chg t1 tdef : changes
+                    | otherwise   = changes
+                    where
+                        changes = [c | c<-(tch:tchs), ct c >= t1, ct c < t2 ]
+
+            tSchedFrom t1 (Temporal tdef []) = [(Chg t1 tdef)]
+            tSchedFrom t1 (Temporal tdef (tch:tchs))
+                    | t1 < ct tch = Chg t1 tdef : changes
+                    | otherwise   = changes
+                    where
+                        changes = [c | c<-(tch:tchs), ct c >= t1]
+
+
+
+exNested1 = Temporal ext2 [Chg 20 ext2]
+exNested2 = Temporal exNat [Chg 7 ext2]
+\end{code}
+
+Once |tJoin| is defined we can now define the |monad| operations. If
+you are unfamiliar with haskell, then this may appear quite strange to
+you. Suffice it to say, that this is akin to solving quadratic
+equations. Once you know the formula, there is need to execute the
+steps to solve it time and again. Likewise the fact that |>>=| can be
+written with respect to |join| and |fmap| is a thing which is always
+true.
+
+\begin{code}
+instance Monad Temporal where
+        return x    = Temporal x []
+        ma >>= f    = tJoin $ fmap f ma
+\end{code}
+
+
+\subsubsection{Applicative}\label{applicative}
 
 Finally the |Applicative| instance allows us to do similar things, but
 no longer limited to unary functions. 
@@ -284,7 +395,10 @@ no longer limited to unary functions.
 \begin{code}
 instance Applicative Temporal where
         pure x = Temporal x []
+        -- This is the shorter implementation  
+--        |(<*>)  = ap|
 
+        -- This is 2..3 times faster
         (Temporal fc fs) <*> (Temporal xd xs) 
                 = Temporal (fc xd) (map apply $ eAlign (fc,xd) fs xs )
                   where
@@ -318,11 +432,27 @@ arguments from each other. So |Temporal|s are only \emph{almost} like
 scalars, because you have to use operators you wouldn't have to use
 with scalars.
 
-Needless to say, that this mechanism doesn't only work with |Int|s but
-with |Temporal|s of any kind. Likewise the function is not limited to
-|(*)|, functions which operate on Ints or functions with two
+Needless to say, that this mechanism does not only work with |Int|s
+but with |Temporal|s of any kind. Likewise the function is not limited
+to |(*)|, functions which operate on Ints or functions with two
 parameters. The only requirement is that the types of the function
 parameters match the type of the Temporals
+
+\subsubsection{Perfomance}
+
+Performance looks okay so far. In the example where the two
+|Temporal|s are multiplied, we have to look at all $100.000$ changes
+and this takes much less than a second.
+
+\begin{verbatim} 
+*Main> timeIt $ putStrLn $ show $ tNubBy (==) $ (*) <$> exNat <*> ext2
+Temporal {td = 0, tc = [(1,10),(2,20),(3,30),(4,40),(5,0)]}
+CPU time:   0.35s (interpreted)
+CPU time:   0.06s (compiled)
+\end{verbatim}
+
+
+\subsection{Applications}
 
 \subsubsection{Periodic Changes}
 
@@ -339,6 +469,7 @@ exPeriodic = Temporal 0
               let cs = (Chg 1 1):(Chg 2 2):(Chg 3 3): map (ctf $ (+3)) cs
               in  cs
              )
+
 \end{code}
 
 |*Main> exShow exPeriodic|\\
@@ -346,18 +477,11 @@ exPeriodic = Temporal 0
 
 This one does not have any upper bound. It oscillates for all eternity.
 
-\subsubsection{Perfomance}
+\subsection{Operations}
 
-Performance looks okay so far. In the example where the two
-|Temporal|s are multiplied, we have to look at all $100.000$ changes
-and this takes much less than a second.
 
-\begin{verbatim}
-*Main> timeIt $ putStrLn $ show $ tNubBy (==) $ (*) <$> exNat <*> ext2
-Temporal {tc = 0, te = [(2,10),(4,20),(5,0)]}
-CPU time:   0.35s
 
-\end{verbatim}
+
 
 %\begin{figure}[htb!]
 %\centering
