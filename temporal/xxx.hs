@@ -1,6 +1,3 @@
 
-
-foo (x:[]) = (x:)
-foo (x:xs) = fmap (x:) (foo xs)
-
-bar = foo [x*x | x <- [1,2,3]]
+x = let a=1: (map (+1) a)
+    in a

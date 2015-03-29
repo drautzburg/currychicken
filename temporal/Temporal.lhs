@@ -18,6 +18,8 @@
 \usepackage{pgf}
 \usepackage[framemethod=tikz]{mdframed}
 \newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
+\renewcommand{\texfamily}{\fontfamily{cmtex}\selectfont\small}
+
 
 % --------------
 % tikz
@@ -47,8 +49,11 @@ we get a lot of power for free.
 
 \tableofcontents 
 \listoffigures
+\listoftables
 
+% ------------------------------------------------------------
 \section{Temporal Data}
+% ------------------------------------------------------------
 
 A |Temporal| value is a value which changes over time at discrete
 points in time. You can see a TV-channel as a |Temporal Image|. When
@@ -70,6 +75,7 @@ We will construct |Temporal| from a default value and a list of
 changes. A Temporal without any changes behaves mostly like a plain
 time-invariant value. 
 
+% ------------------------------------------------------------
 \subsection{Changes}
 
 A Change associates a point in time with some arbitrary value of any
@@ -84,7 +90,9 @@ which extract the time or the value from a change respectivly.
 
 %if False
 \begin{code}
+module Temporal where
 import Data.List.Ordered
+import qualified Data.Map.Lazy as M
 import Control.Monad
 import qualified Data.DList as D
 import Control.Applicative
@@ -109,13 +117,33 @@ instance Show a => Show (Change a) where
 \subsubsection{Some handy functions}
 
 \begin{code}
--- apply a function to the value
-cvf :: (a->b) -> Change a -> Change b
-cvf f e = Chg (ct e) (f $ cv e)
+-- "value function, returning change" - apply a function to the value, return Change
+cvfc :: (a -> b) -> Change a -> Change b
+cvfc f e = Chg (ct e) (f $ cv e)
 
--- apply a function to the time
-ctf :: (Time->Time) -> Change a -> Change a
-ctf f e = Chg (f $ ct e) (cv e)
+-- "time function" - apply a function to the time, return Change
+ctfc :: (Time -> Time) -> Change a -> Change a
+ctfc f e = Chg (f $ ct e) (cv e)
+
+
+-- "time function" - apply a function to the time, return a
+ctf :: (Time -> b) -> Change a -> b
+ctf f e = f $ ct e
+
+
+\end{code}
+
+
+\subsubsection{Lists of Changes}
+From a List of Changes we can ask the next change time, or error or empty list
+\begin{code}
+ctNext :: [Change a] -> Time
+ctNext = ct . head
+\end{code}
+
+\begin{code}
+cDelay :: Time -> [Change a] -> [Change a]
+cDelay t cgs = map (ctfc (+t)) cgs
 \end{code}
 
 We anticipate that we eventually have to remove duplicate
@@ -123,22 +151,53 @@ values which belong to successive Changes. We leave the question open,
 how to test for equality, i.e. we might want to remove values which
 are just \emph{close enough}. Hence the function which determines
 whether or not two values are equal enough is a parameter to
-|eNubBy| and so is an initial value |xd| to comapare with.
+|cNubBy| and so is an initial value |xd| to comapare with.
 
 Nubbing does change the semantics of a Temporal somewhat, namely when
 you insert another change between two equal changes.
 
 \begin{code}
 -- remove successive duplicate values from a list of Changes
-eNubBy :: (a->a->Bool) -> a -> [Change a] -> [Change a]
-eNubBy eq xd [] = []
-eNubBy eq xd (e:es) 
-       | eq (cv e) xd = eNubBy eq xd es
-       | otherwise    = e : eNubBy eq (cv e)  es
+cNubBy :: (a->a->Bool) -> a -> [Change a] -> [Change a]
+cNubBy eq xd [] = []
+cNubBy eq xd (e:es) 
+       | eq (cv e) xd = cNubBy eq xd es
+       | otherwise    = e : cNubBy eq (cv e)  es
 
 \end{code}
 
-\subsubsection{Aligining}
+The list of changes needs to be kept ordered at all times. This allows
+us to slice a list changes by specifying two time predicates
+representing lower and upper conditions. The resulting list contains
+all changes where both predicates hold. Once the upper predicate
+returns false we don't have to traverse the list any further.
+
+we allow predicates for the whole change, or just its time component.
+
+For time-slicing, We use predicates instead of Times so we can easily
+slice with just a lower bound (think: \emph{sliceFrom}) or just an
+upper bound and using |anytime| for the respective other bound.
+
+\begin{code}
+-- remove initial part of the list, 
+-- return last discarded change value, or parameter c
+cDropwhile  :: (Change a -> Bool) -> a -> [Change a] -> (a, [Change a])
+cDropwhile _ c []    =  (c, [])
+cDropwhile p c xs@(x:xs')
+        | p x       =  cDropwhile p (cv x) xs'
+        | otherwise =  (c,xs)
+
+cTdropwhile  :: (Time -> Bool) -> a -> [Change a] -> (a, [Change a])
+cTdropwhile p c =  cDropwhile (ctf p) c
+
+
+cTslice :: (Time->Bool) -> (Time->Bool) -> [Change a] -> [Change a]
+cTslice p1 p2 chgs = let (_,cs) = cTdropwhile (not. p1) undefined chgs
+                     in takeWhile (ctf p2) cs
+
+
+anytime = const True
+\end{code}
 
 For our work we will have to align two lists of Changes in a meaningful
 way. If both lists have Changes at the same times, this is trivial. 
@@ -147,6 +206,12 @@ But we must also be prepared to find a Change in one list, where there
 is no corresponding Change in the other list. In that case we must
 create a new change in that other list, so we have enough changes to
 pair them up.
+
+\begin{figure}[htb!]
+\centering
+\includegraphics[width=6cm]{align.png}
+\caption{Aligning changes}
+\end{figure}
 
 The value between two changes will be that of the earlier change. This
 leaves a question about the value \emph{before} the first change. To
@@ -159,8 +224,8 @@ shall hold between the dawn of time and the first change.
 eAlign :: (a,b) -> [Change a] -> [Change b] -> ([Change (a,b)])
 
 -- if one of the lists is empty, them pair up with its constant
-eAlign (xd,yd) cxs []  = map (cvf (\xi -> (xi,yd))) cxs
-eAlign (xd,yd) [] cys  = map (cvf (\yi -> (xd,yi))) cys
+eAlign (xd,yd) cxs []  = map (cvfc (\xi -> (xi,yd))) cxs
+eAlign (xd,yd) [] cys  = map (cvfc (\yi -> (xd,yi))) cys
 
 -- Otherwise the result depends on which change is earlier
 eAlign (xd,yd) cxss@((Chg tx xi):cxs) cyss@((Chg ty yi):cys) 
@@ -172,10 +237,12 @@ eAlign (xd,yd) cxss@((Chg tx xi):cxs) cyss@((Chg ty yi):cys)
                      in Chg ty c : eAlign c cxss cys 
 \end{code}
 
-We'll use this function later on to define higher-order functions on
-Temporals. It is not strictly needed but provides better performance
-than the alternative. See (\ref{applicative})
+We'll use this function later on to define the |<*>|
+\emph{Applicative} operation on Temporals. It is not strictly needed
+but provides better performance than the alternative |ap|. See
+(\ref{applicative})
 
+% ------------------------------------------------------------
 \subsection{Temporal}
 
 Temporal combines a Change-list and a constant default value (often
@@ -195,7 +262,7 @@ tChangeValues tpr = td tpr : map cv (tc tpr)
 
 \end{code}
 
-\subsubsection{Some handy functions}
+\subsubsection{Some handy functions}\label{handy}
 
 Temporals can be limited by Time. You can discard old changes and only
 keep the ones which occur \emph{after} a certain point in time
@@ -208,20 +275,16 @@ fall into a given time window, where the upper bound is excluded.
 tAfter :: Time -> Temporal a -> Temporal a
 tAfter t1 (Temporal xd xs) = Temporal c late
         where
-            (c,late)  = dropwhile ((<= t1)  . ct) xd xs
-
-            -- like dropWhile but also return the final constant
-            dropwhile  :: (Change a -> Bool) -> a -> [Change a] -> (a, [Change a])
-            dropwhile _ c []    =  (c, [])
-            dropwhile p c xs@(x:xs')
-                    | p x       =  dropwhile p (cv x) xs'
-                    | otherwise =  (c,xs)
+            (c,late)  = cTdropwhile (<= t1) xd xs
 
 -- limit temporal to $t1 \leq te < t2$
 tWindow :: (Time, Time) -> Temporal a -> Temporal a
 tWindow (t1, t2) tpr = let Temporal xd xs = tAfter t1 tpr
                        in  Temporal xd (takeWhile ((< t2) . ct) xs)
 
+
+tDelay :: Time -> Temporal a -> Temporal a
+tDelay t (Temporal d cs) = Temporal d (cDelay t cs)
 
 \end{code}
 With these definition we can now implement functions which give you
@@ -241,16 +304,16 @@ tFt :: Temporal a -> (Time -> a)
 tFt = flip tAt
 \end{code}
 
-Removing duplicates can be implemented in terms of |eNubBy|
+Removing duplicates can be implemented in terms of |cNubBy|
 
 \begin{code}
 tNubBy :: (a->a->Bool) -> Temporal a -> Temporal a
-tNubBy eq (Temporal xd xs) = Temporal xd (eNubBy eq xd xs)
+tNubBy eq (Temporal xd xs) = Temporal xd (cNubBy eq xd xs)
 
 \end{code}
 
 
-
+% ------------------------------------------------------------
 \subsection{Instances}
 
 We will now make |Temporal| an instance of several widely used
@@ -270,7 +333,7 @@ ext2 :: Temporal Int
 ext2   = Temporal 10 [Chg 5 0]
 
 -- Show the first changes only
-exShow = tWindow (0,7)
+exShow (Temporal d cgs) = Temporal d (take 6 cgs)
 
 \end{code}
 
@@ -304,7 +367,7 @@ The |Functor| instance allows us to map an unary function over a
 \begin{code}
 
 instance Functor Temporal where
-        fmap f (Temporal xd xs) = Temporal (f xd) (map (cvf f) xs)
+        fmap f (Temporal xd xs) = Temporal (f xd) (map (cvfc f) xs)
 \end{code}
 
 We can e.g. now convert the ascending natural numbers in |exNat| into
@@ -323,51 +386,50 @@ Temporals.
 
 We define a the Monad instance with respect to the flattening function
 |tJoin|. At its heart is |joinChs| to handle a List of |Change
-(Temporal a)|. The Change has a change-time, and tJoin takes the
+(Temporal a)|. The outer Change has a change-time, and tJoin takes the
 default from the embedded Temporal and schedules it to the
 change-time, which turns it into a plain Change. Then it takes the
 Changes of the embedded Temporal and filters those which occur beween
 this change-time and the next change-time. The remaining code deals
 with things at the beginning or end of the flattening.
 
-\begin{code}
+\begin{figure}[htb!]
+\centering
+\includegraphics[width=8cm]{tJoin.png}
+\caption{Flattening Temporals}
+\end{figure}
 
+\needspace{20em}
+\begin{code}
 tJoin :: Temporal (Temporal a) -> Temporal a
 tJoin (Temporal tdef [])  = Temporal (td tdef) (tc tdef)
 tJoin (Temporal tdef tchs) = Temporal (td tdef) (dChs ++ joinChs tchs)
         where
-                  
-            dChs = let t2 = (ct.head) tchs -- next change in outer
-                   in tSchedTo t2 tdef
+            dChs = let t2 = ctNext tchs -- next change in outer
+                   in cTslice anytime (< t2) (tc tdef)
 
             joinChs :: [Change (Temporal a)] -> [(Change a)]
+            -- last change
             joinChs ((Chg t1 tpr) : []) 
-                    = tSchedFrom t1 tpr
+                    = tSchedBetween t1 anytime tpr
+            -- other change
             joinChs ((Chg t1 tpr):tchs) 
-                    = let t2 = (ct.head) tchs -- next change in outer
-                      in tSchedBetween t1 t2 tpr ++ joinChs tchs
+                    = let t2 = ctNext tchs -- next change in outer
+                      in tSchedBetween t1 (< t2) tpr ++ joinChs tchs
 
-
-            tSchedTo t2 (Temporal tdef tchs) = changes
+            -- from t1 until p2 becomes false
+            tSchedBetween t1 p2 (Temporal tdef []) = [(Chg t1 tdef)] 
+            tSchedBetween t1 p2 (Temporal tdef tchs)
+                    | needsDefault  = Chg t1 tdef : changes
+                    | otherwise     = changes
                     where
-                        changes = [c | c<-tchs, ct c < t2 ]
+                        changes      = cTslice (>= t1) p2 tchs
+                        needsDefault = null changes 
+                                       || (t1 < (ctNext changes))
 
-            tSchedBetween t1 t2 (Temporal tdef []) = [(Chg t1 tdef)] 
-            tSchedBetween t1 t2 (Temporal tdef (tch:tchs))
-                    | t1 < ct tch = Chg t1 tdef : changes
-                    | otherwise   = changes
-                    where
-                        changes = [c | c<-(tch:tchs), ct c >= t1, ct c < t2 ]
+\end{code}
 
-            tSchedFrom t1 (Temporal tdef []) = [(Chg t1 tdef)]
-            tSchedFrom t1 (Temporal tdef (tch:tchs))
-                    | t1 < ct tch = Chg t1 tdef : changes
-                    | otherwise   = changes
-                    where
-                        changes = [c | c<-(tch:tchs), ct c >= t1]
-
-
-
+\begin{code}
 exNested1 = Temporal ext2 [Chg 20 ext2]
 exNested2 = Temporal exNat [Chg 7 ext2]
 \end{code}
@@ -396,7 +458,7 @@ no longer limited to unary functions.
 instance Applicative Temporal where
         pure x = Temporal x []
         -- This is the shorter implementation  
---        |(<*>)  = ap|
+        --        |(<*>)  = ap|
 
         -- This is 2..3 times faster
         (Temporal fc fs) <*> (Temporal xd xs) 
@@ -434,7 +496,7 @@ with scalars.
 
 Needless to say, that this mechanism does not only work with |Int|s
 but with |Temporal|s of any kind. Likewise the function is not limited
-to |(*)|, functions which operate on Ints or functions with two
+to |(*)|, or functions which operate on Ints or functions with two
 parameters. The only requirement is that the types of the function
 parameters match the type of the Temporals
 
@@ -444,41 +506,212 @@ Performance looks okay so far. In the example where the two
 |Temporal|s are multiplied, we have to look at all $100.000$ changes
 and this takes much less than a second.
 
+\begingroup\small
 \begin{verbatim} 
 *Main> timeIt $ putStrLn $ show $ tNubBy (==) $ (*) <$> exNat <*> ext2
 Temporal {td = 0, tc = [(1,10),(2,20),(3,30),(4,40),(5,0)]}
 CPU time:   0.35s (interpreted)
 CPU time:   0.06s (compiled)
 \end{verbatim}
-
-
-\subsection{Applications}
-
-\subsubsection{Periodic Changes}
+\endgroup
+\subsubsection{Periodic Temporals}
 
 It would be quite nice to specify a Temporal which shows some periodic
-behavior. This is indeed possible and not very difficult, though I
-wouldn't know how to do this in Java.
+behavior. We must however, ask ourselves what happens when we repeat a
+|Temporal| which takes longer than the time between repetitions. What
+if we repeat the same song every minute, but the song takes three
+minutes? Certainly we cannot simply deleay and repeat the Changes.
 
-Here is a temporal whith a default of zero which repeats the values
-|1,2,3| over and over.
+Luckily |tJoin| already takes care of this. All we need to do is
+create a |Temporal Temporal| where the outer Temporal stands for the
+repetitions and its Changes are the original Temporal, repeatedly
+scheduled for a certain delay.
+
+Let's first start with repeating Temporals at specific points in time,
+which are teken from an ordered List.
 
 \begin{code}
-exPeriodic = Temporal 0 
-             (
-              let cs = (Chg 1 1):(Chg 2 2):(Chg 3 3): map (ctf $ (+3)) cs
-              in  cs
-             )
+tRepeat :: [Time] -> Temporal a -> Temporal a
+tRepeat times tpr = let changes = map (sched tpr) times
+                in tJoin $ Temporal tpr changes
+        where
+            sched :: Temporal a -> Time -> Change (Temporal a)
+            sched tpr' t = Chg t (Temporal (td tpr') (cDelay t (tc tpr')))
 
 \end{code}
 
-|*Main> exShow exPeriodic|\\
-  \eval{exShow exPeriodic}
+If we want to repeat at fixed time intervals, we do it like this:
 
-This one does not have any upper bound. It oscillates for all eternity.
+\begin{code}
+tCycle :: Time -> Temporal a -> Temporal a
+tCycle t = tRepeat [t, 2*t ..]
+\end{code}
 
-\subsection{Operations}
+Temporals created by |tCycle| have an infinite list of Changes. They
+oscillate for all eternity, but this in not a problem in a lazy labguage.
 
+The most general case is scheduling \emph{different} Temporals to
+become effective at different times.xxx
+
+
+
+
+Watch how |ext2| repeats itself every 12 units of time.
+
+|*Main> exShow (tCycle 12 ext2)|\\
+  \eval{exShow (tCycle 12 ext2)}
+
+If we repeat with a higher frequeny, |ext2| can no longer drop to
+zero, because at that time the next repetition has already started.
+
+|*Main> exShow (tCycle 4  ext2)|\\
+  \eval{exShow (tCycle 4  ext2)}
+
+The large |exNat| is also not a problem. Hey, this would even work if
+the Temporal had an infinite number of changes.
+
+|*Main> exShow (tCycle 3  exNat)|\\
+  \eval{exShow (tCycle 3  exNat)}
+
+
+\subsubsection{Temporal Collections}
+
+So far we only dealt with Temporals as time-varying values. We could
+e.g. model a train by its time varying position. A Collection of such
+trains would make a train schedule. 
+
+But the schedule is no longer a Temporal, but a Collection of
+Temporals. Our operations on Temporals like |tCycle| are not
+directly applicable to the schedule.
+
+Still a Collection of Temporals is semantically a Temporal. After all
+it is a Value (a Collection of train positions) which changes over
+time. It would be a cool thing to have an operation, which transforms
+a Collection of Temporals into a Temporal Collection, particularly if
+we don't have to be explicit about the type of the Collection (List,
+Hashmap).
+
+Then again, we would already be happy, if we could just apply
+operations like |tCycle| on a Collection of Temporals and get a
+Collection of Temporals back. Thus the |Temporal Collection| would
+never have to materialize. It turns out that |fmap| already does most
+of what we want. This will work on any collection which are instances
+of |Functor|.
+
+\begin{code}
+exTrains1 :: M.Map String (Temporal String)
+exTrains1 = M.insert "IC102" (Temporal 
+                              "Konstanz" 
+                              [
+                               (Chg 10 "Radolfzell"),
+                               (Chg 20 "Singen")
+                              ]) 
+            $
+            M.insert "IC111" (Temporal 
+                              "Mannheim" 
+                              [
+                               (Chg 25 "Karlsruhe"),
+                               (Chg 40 "Offenburg")
+                              ]) 
+            $
+            M.empty
+\end{code}
+
+We can now apply some our temporal functions. Let's first let the
+train schedule repeat itself every 100 units of time
+
+\begin{code}
+exTrains2 = fmap (tCycle 100) exTrains1
+\end{code}
+
+Let's check where our tains are at a certain time.
+
+|*Main> fmap (tAt 30) exTrains1|\\
+  \eval{fmap (tAt 30) exTrains1}
+
+|*Main> fmap (tAt 30) exTrains2|\\
+  \eval{fmap (tAt 30) exTrains2}
+
+|ExTrains1| does not include a repetition, so in the late future all
+trains are at their final destination.
+
+|*Main> fmap (tAt 100) exTrains1|\\
+  \eval{fmap (tAt 100) exTrains1}
+
+|ExTrains2| does include a repetition, so trains start all over again.
+
+|*Main> fmap (tAt 100) exTrains2|\\
+  \eval{fmap (tAt 100) exTrains2}
+
+
+% ------------------------------------------------------------
+\subsection{Relational Database representation}
+
+Assuming each entity is represented as a Table with a primary key, you
+can turn any table into a temporal table, by adding a |Change| table for
+each attribute and have the main table hold only the temporal default
+for that attribute. 
+
+Consider a table of trains, where the only attribute is the location
+of each train. We assume a train does not have a default location and
+the ``location'' attribute in the main table is null.
+
+\begin{table}[h!]
+\begin{tabular}{ll}
+\hline
+\multicolumn{2}{c}{Train} \\
+\hline
+PK & Location\\
+\hline
+RE2310 & null \\
+IC112 & null \\
+\hline
+\end{tabular}
+\quad\quad\quad\quad
+\begin{tabular}{llll}
+\hline
+\multicolumn{4}{c}{TrainLocationChange} \\
+\hline
+PK & FK & Time & Value \\
+\hline
+1 & RE2310 & 10.03.2015 16:00 & Konstanz \\
+2 & RE2310 & 10.03.2015 16:25 & Radolfzell \\
+3 & RE2310 & 10.03.2015 16:40 & Singen \\
+4 & RE2310 & 10.03.2015 16:45 & null \\
+5 & IC112 & 10.03.2015 06:20 & Mannheim \\
+6 & IC112 & 10.03.2015 07:00 & Karlsruhe \\
+7 & IC112 & 10.03.2015 08:40 & Offenburg \\
+\hline
+\end{tabular}
+\caption{Temporal relational table}
+\end{table}
+
+The primary key for TrainLocationChanges is not strictly needed, but
+offers the possibility to reference a row from another temporal table,
+creating a |Temporal Temporal|.
+
+After 10.03.2015 16:45 the RE2310 is ``nowhere'', while the IC112
+stays in Offenburg forever after 10.03.2015 08:40.
+
+For selects from temporal tables, the following must be kept in mind:
+\begin{itemize}
+\item a select without a time restriction, or with a time-range
+  restriction returns a temporal value. However, that cannot be
+  expressed in a single relation, because we need a main table and a
+  number of change tables.
+\item It is however, possible to write several selects, one for the
+  main table and one for each changing attribute of the result.
+\item Denormalizing the result it not a good idea. Even a table with
+  just two temporal attributes, would, when queried, result in all
+  combinations of changes. These combinations are pretty meaningless. 
+\item A select with a point-in-time restriction returns a simple
+  relation. This follows directly from the implementation of |tAt| in
+  (\ref{handy})
+\item All in all, temporal values do not fit nicely into the relational
+  paradigm.
+\item Ideally one would have true temporal attributes, without having
+  to resort to separate change tables.
+\end{itemize}
 
 
 
@@ -489,3 +722,5 @@ This one does not have any upper bound. It oscillates for all eternity.
 %\end{figure}
 
 \end{document}
+
+(define-key outline-minor-mode-map [(C-left)] 'hide-sublevels) 
