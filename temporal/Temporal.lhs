@@ -107,11 +107,11 @@ type Time = Integer
 data Change a = Chg {
             ct :: Time, -- "change time"
             cv :: a     -- "change value"
-        }
+        } deriving (Eq,Show)
 
--- make the String-representation less vebose
-instance Show a => Show (Change a) where
-        show (Chg t v) = "(" ++ show t ++ "," ++ show v ++ ")"
+-- make the String-representation less verbose
+--instance Show a => Show (Change a) where
+--xxx        show (Chg t v) = "(" ++ show t ++ "," ++ show v ++ ")"
 \end{code}
 
 \subsubsection{Some handy functions}
@@ -179,21 +179,21 @@ slice with just a lower bound (think: \emph{sliceFrom}) or just an
 upper bound and using |anytime| for the respective other bound.
 
 \begin{code}
--- remove initial part of the list, 
--- return last discarded change value, or parameter c
-cDropwhile  :: (Change a -> Bool) -> a -> [Change a] -> (a, [Change a])
-cDropwhile _ c []    =  (c, [])
-cDropwhile p c xs@(x:xs')
-        | p x       =  cDropwhile p (cv x) xs'
-        | otherwise =  (c,xs)
 
-cTdropwhile  :: (Time -> Bool) -> a -> [Change a] -> (a, [Change a])
-cTdropwhile p c =  cDropwhile (ctf p) c
+-- Return change where p holds plus all following changes
+-- Maybe return change value of last change where p didn't hold
+cPart :: (Time->Bool) -> [Change a] -> (Maybe a,[Change a])
+cPart p cs = cPart' Nothing p cs
+        where
+            cPart' a p []     = (a,[])
+            cPart' a p (x:xs) 
+                    | p (ct x)  = (a, x:xs)
+                    | otherwise = cPart' (Just $ cv x) p xs
 
 
-cTslice :: (Time->Bool) -> (Time->Bool) -> [Change a] -> [Change a]
-cTslice p1 p2 chgs = let (_,cs) = cTdropwhile (not. p1) undefined chgs
-                     in takeWhile (ctf p2) cs
+cWindow ::(Time->Bool) -> (Time->Bool) -> [Change a] -> [Change a]
+cWindow p1 p2 cs = let (_, cs') = cPart p1 cs
+                   in  takeWhile (p2.ct) cs'
 
 
 anytime = const True
@@ -221,20 +221,20 @@ shall hold between the dawn of time and the first change.
 \needspace{20em}
 \begin{code}
 
-eAlign :: (a,b) -> [Change a] -> [Change b] -> ([Change (a,b)])
+cAlign :: (a,b) -> [Change a] -> [Change b] -> ([Change (a,b)])
 
 -- if one of the lists is empty, them pair up with its constant
-eAlign (xd,yd) cxs []  = map (cvfc (\xi -> (xi,yd))) cxs
-eAlign (xd,yd) [] cys  = map (cvfc (\yi -> (xd,yi))) cys
+cAlign (xd,yd) cxs []  = map (cvfc (\xi -> (xi,yd))) cxs
+cAlign (xd,yd) [] cys  = map (cvfc (\yi -> (xd,yi))) cys
 
 -- Otherwise the result depends on which change is earlier
-eAlign (xd,yd) cxss@((Chg tx xi):cxs) cyss@((Chg ty yi):cys) 
+cAlign (xd,yd) cxss@((Chg tx xi):cxs) cyss@((Chg ty yi):cys) 
         | tx == ty = let c = (xi,yi)
-                     in Chg ty c : eAlign c cxs  cys  
+                     in Chg ty c : cAlign c cxs  cys  
         | tx <  ty = let c = (xi,yd)
-                     in Chg tx c : eAlign c cxs  cyss 
+                     in Chg tx c : cAlign c cxs  cyss 
         | tx >  ty = let c = (xd, yi)
-                     in Chg ty c : eAlign c cxss cys 
+                     in Chg ty c : cAlign c cxss cys 
 \end{code}
 
 We'll use this function later on to define the |<*>|
@@ -253,7 +253,7 @@ extracted by the implicitly created functions |tc| and |te|.
 data Temporal a = Temporal {
     td :: a,         -- "temporal default"
     tc :: [Change a] -- "temporal changes"
-} deriving (Show)
+} deriving (Eq, Show)
 
 
 -- get change values including the default
@@ -273,15 +273,24 @@ fall into a given time window, where the upper bound is excluded.
 \begin{code}
 -- limit temporal to $t1 \leq te$
 tAfter :: Time -> Temporal a -> Temporal a
-tAfter t1 (Temporal xd xs) = Temporal c late
+tAfter t1 (Temporal xd chs) = case c of
+                                 Nothing -> Temporal xd late
+                                 Just c' -> Temporal c'  late
         where
-            (c,late)  = cTdropwhile (<= t1) xd xs
+            (c,late)  = cPart (<= t1) chs
 
 -- limit temporal to $t1 \leq te < t2$
 tWindow :: (Time, Time) -> Temporal a -> Temporal a
 tWindow (t1, t2) tpr = let Temporal xd xs = tAfter t1 tpr
                        in  Temporal xd (takeWhile ((< t2) . ct) xs)
 
+tChangesAfter :: Time -> Temporal a -> [Change a]
+tChangesAfter t1 tpr 
+        |  needsDefault = (Chg t1 (td tpr)) : changes
+        | otherwise     = changes
+        where
+            (c,changes) = cPart (>= t1) (tc tpr)
+            needsDefault = null changes || (ct.head) changes > t1
 
 tDelay :: Time -> Temporal a -> Temporal a
 tDelay t (Temporal d cs) = Temporal d (cDelay t cs)
@@ -401,37 +410,21 @@ with things at the beginning or end of the flattening.
 
 \needspace{20em}
 \begin{code}
+
+-- xxx must thread default too
 tJoin :: Temporal (Temporal a) -> Temporal a
-tJoin (Temporal tdef [])  = Temporal (td tdef) (tc tdef)
-tJoin (Temporal tdef tchs) = Temporal (td tdef) (dChs ++ joinChs tchs)
+tJoin (Temporal tdef tchs) = Temporal (td tdef) (fst changes ++ snd changes)
         where
-            dChs = let t2 = ctNext tchs -- next change in outer
-                   in cTslice anytime (< t2) (tc tdef)
-
-            joinChs :: [Change (Temporal a)] -> [(Change a)]
-            -- last change
-            joinChs ((Chg t1 tpr) : []) 
-                    = tSchedBetween t1 anytime tpr
-            -- other change
-            joinChs ((Chg t1 tpr):tchs) 
-                    = let t2 = ctNext tchs -- next change in outer
-                      in tSchedBetween t1 (< t2) tpr ++ joinChs tchs
-
-            -- from t1 until p2 becomes false
-            tSchedBetween t1 p2 (Temporal tdef []) = [(Chg t1 tdef)] 
-            tSchedBetween t1 p2 (Temporal tdef tchs)
-                    | needsDefault  = Chg t1 tdef : changes
-                    | otherwise     = changes
-                    where
-                        changes      = cTslice (>= t1) p2 tchs
-                        needsDefault = null changes 
-                                       || (t1 < (ctNext changes))
+            changes = foldl f ([], tc tdef) tchs
+            f (res,cs) tp  = let res' = res ++ cWindow anytime (< ct tp) cs
+                                 cs'  = cWindow (>= ct tp) anytime (tc $ cv tp)
+                             in (res', cs')
 
 \end{code}
 
 \begin{code}
 exNested1 = Temporal ext2 [Chg 20 ext2]
-exNested2 = Temporal exNat [Chg 7 ext2]
+exNested2 = Temporal exNat [Chg 4 ext2]
 \end{code}
 
 Once |tJoin| is defined we can now define the |monad| operations. If
@@ -462,7 +455,7 @@ instance Applicative Temporal where
 
         -- This is 2..3 times faster
         (Temporal fc fs) <*> (Temporal xd xs) 
-                = Temporal (fc xd) (map apply $ eAlign (fc,xd) fs xs )
+                = Temporal (fc xd) (map apply $ cAlign (fc,xd) fs xs )
                   where
                       apply (Chg t (f,x)) = Chg t (f x)
 
