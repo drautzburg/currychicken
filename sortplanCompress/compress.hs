@@ -55,7 +55,7 @@ rangeCompress spl = map compressProduct spl
                   in False -- match == Nothing || (snd . fromJust) match == p
 
 
-type ParseIn = (HashedSortplan, [Sortcode])
+type ParseIn = [Sortcode]
 newtype Parser a = Parser {parse :: ParseIn -> [(a, ParseIn)]}
 
 instance Monad Parser where
@@ -74,30 +74,41 @@ instance Functor Parser where
                     g (x,ys) = (f x, ys)
 
 
-addable :: Product -> Parser Sortcode
-addable p = Parser prs
+addable :: HashedSortplan -> Product -> Parser Sortcode
+addable hsp p = Parser prs
         where
             prs :: ParseIn -> [(Sortcode, ParseIn)]
-            prs (rsp,[]) = []
-            prs (rsp,(c:cs)) = case M.lookupLT c rsp of
-                    Nothing     ->  [(c, (rsp,cs))]
-                    Just (_,p') ->  if p==p'
-                                    then [(c, (rsp,cs))]
-                                    else []
+            prs [] = []
+            prs (c:cs) = case M.lookupLT c hsp of
+              Nothing     ->  [(c, cs)]
+              Just (_,p') ->  if p==p'
+                              then [(c, cs)]
+                              else []
+
+pUpper :: HashedSortplan -> Product -> Parser Range
+pUpper hsp p = do
+      c <- addable hsp p
+      y <- pRange hsp p
+      return y
+
+pSortcode :: Parser Sortcode
+pSortcode = Parser f
+  where
+    f [] = []
+    f (x:xs) =[(x,xs)]
+
+  
+pRange :: HashedSortplan -> Product -> Parser Range
+pRange hsp p = do
+    (lo,hi) <- pUpper hsp p
+    return (lo, hi)
 
 
 
+exSpl  = mkSortplan 1
+exHash = asHashedSortplan exSpl
 
-pRange :: Product -> Parser Range -> Parser Range
-pRange p prg = do
-    (lo,hi) <- prg
-    hi'     <- addable p
-    return (lo, hi')
-    
-    
-
-
-
+xxx = parse (pRange exHash 1) ((snd.head) exSpl)
             
 
 

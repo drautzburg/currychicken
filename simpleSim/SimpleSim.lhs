@@ -245,7 +245,7 @@ to process the stream without slowing it down. It is the rate at which
 material arrives. We might have called it \verb!flow rate! or
 \verb!current!. There is also the throughput of a process, which
 \emph{limits} the flow rate. The two concepts are very similar and
-have the units, but are not quite identical.
+have the same units, but are not quite identical.
 
 \begin{code}
 type Time = Double
@@ -256,6 +256,8 @@ type Throughput = Double
 \end{code}
 
 \subsubsection{Accessing}
+
+Here are some quite boring functions to access the fields of a Segment.
 \begin{code}
 -- getters
 sgStartTime (b, (t1, t2), tp) = t1
@@ -268,8 +270,13 @@ sgSetStartTime t1' (b, (t1, t2), tp) = (b,(t1',t2 ), tp)
 sgSetEndTime   t2' (b, (t1, t2), tp) = (b,(t1, t2'), tp)
 sgSetInterval  (t1',t2') (b, (t1, t2), tp) = (b,(t1', t2'), tp)
 sgSetTp        tp' (b, (t1, t2), tp) = (b,(t1, t2 ), tp')
+\end{code}
 
--- simple operations
+Slightly more interesting are these operations. To scale the throughput
+of a Segment. We will preserve the volume and hence need to postpone
+the end time $t2$ when the throughput gets reduced.
+
+\begin{code}
 sgDelay        dt  (b, (t1, t2), tp) = (b, (t1+dt, t2+dt), tp)
 sgScaleTp      k   (b, (t1, t2), tp) = (b, (t1, t1 + k*(t2-t1)), tp/k)
 \end{code}
@@ -783,8 +790,9 @@ have to \emph{re-batch} occasionally to maintain meaningful batches.
 \includegraphics[width=10cm]{throttle4.png}
 \end{figure}
 
+\needspace{30em}
 \section{A complete Example}
-
+\subsection{Material}
 Let's construct some material. In the real world, this would be given.
 
 \begin{code}
@@ -817,6 +825,7 @@ sfParcelMaterial = M $ map f sfCityCodes
     v      = 10
 \end{code}
 
+\subsection{Batches}
 The actual Batches contain a mix of all the Material. Let's create a
 shorthand function to create one
 
@@ -828,7 +837,11 @@ mkSfBatch1 name = (name, maMergeAll [
                       sfMessyFlyerMaterial])
 \end{code}
 
-Now let's create two unbuffer processes
+\subsection{Streams}
+
+The topology of the network is incoded in the way we construct
+Steams. Let's start with the unbuffer processes which create the input
+Streams.
 
 \begin{code}
 sfInStream1 :: Stream SfClassification
@@ -878,15 +891,15 @@ The in-Streams get split in three
 (messyFlyerStream1, sortedFlyerStream1, parcelStream1)
   = (
   stFilter sfIsMessyFlyerBag  sfInStream1,
-  stFilter sfIsSortedFlyerBag  sfInStream1,
-  stFilter sfIsParcel  sfInStream1
+  stFilter sfIsSortedFlyerBag sfInStream1,
+  stFilter sfIsParcel         sfInStream1
   )
 
 (messyFlyerStream2, sortedFlyerStream2, parcelStream2)
   = (
-  stFilter sfIsMessyFlyerBag  sfInStream2,
+  stFilter sfIsMessyFlyerBag   sfInStream2,
   stFilter sfIsSortedFlyerBag  sfInStream2,
-  stFilter sfIsParcel  sfInStream2
+  stFilter sfIsParcel          sfInStream2
   )
 \end{code}
 
@@ -968,7 +981,13 @@ consequences:
       alone start a process once the required resources are
       available. 
 \item It is difficult to start a process once a sufficient amount of
-      Material is available.
+      Material is available. However, Opal currently uses a
+      \emph{planning workflow} to respond to predicted states. This
+      means you run a simulation and then fix the problems you see. The
+      planning workflow may automate this to some extent. All in all
+      this is not a bad idea, because it keeps the simulation simple
+      and allows responding to ``future'' situations. A pure DES would
+      have trouble doing this.
 \item If more than one process picks up material at the same location,
       then Material may be doubled. There is no safeguard, that
       ensures that Material can only go in one direction. This may be
@@ -1077,7 +1096,7 @@ others.
 \item[\verb!::!] A type declaration. Read \verb!x :: Int! as ``x has type Int''
 \item[\verb!->!] The type of a function. Read \verb!a->b->c! as ``a function
   which takes an $a$ and a $b$ and returns a $c$.
-\item[\verb!type!] A type synonym. Read \verb!type Count Double! as ``Count
+\item[\verb!type!] A type synonym. Read \verb!type Count = Double! as ``Count
   is another name for Double''
 \item[\verb!data!] A new type definition. Read \verb!data Class = Speed|Std!
   as ``Class is a type with the two values Speed and Std. Can be

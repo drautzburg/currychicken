@@ -19,7 +19,7 @@ export EMPTY_LHS
 
 %pdf: %tex
 #	pdflatex -interaction=batchmode $? 
-	pdflatex $< 
+	pdflatex $<  
 
 %.view: %.pdf
 	"C:/Program Files (x86)/SumatraPDF/SumatraPDF.exe" $?
