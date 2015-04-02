@@ -59,10 +59,9 @@ type ParseIn = [Sortcode]
 newtype Parser a = Parser {parse :: ParseIn -> [(a, ParseIn)]}
 
 instance Monad Parser where
-        return x = Parser (\inp -> [(x,inp)])
-        p >>= f  = Parser $ \ps -> case (parse p) ps of
-                                       []        -> []
-                                       [(v,out)] -> parse (f v) out
+        return x = Parser $ \inp -> [(x,inp)]
+        p >>= f  = Parser $ \inp -> concat [parse (f a) cs'| (a,cs') <- parse p inp]
+
 
 instance Applicative Parser where
         pure = return
@@ -73,23 +72,22 @@ instance Functor Parser where
                 where
                     g (x,ys) = (f x, ys)
 
+instance MonadPlus Parser where
+  p `mplus` q = Parser (\cs -> parse p cs ++ parse q cs)
+  mzero       = pFail
+  
+addable :: HashedSortplan -> Product -> (Sortcode->Bool)
+addable hsp p = \c ->  case M.lookupLT c hsp of
+                         Nothing     ->  True
+                         Just (_,p') ->  p==p'
 
-addable :: HashedSortplan -> Product -> Parser Sortcode
-addable hsp p = Parser prs
-        where
-            prs :: ParseIn -> [(Sortcode, ParseIn)]
-            prs [] = []
-            prs (c:cs) = case M.lookupLT c hsp of
-              Nothing     ->  [(c, cs)]
-              Just (_,p') ->  if p==p'
-                              then [(c, cs)]
-                              else []
 
-pUpper :: HashedSortplan -> Product -> Parser Range
-pUpper hsp p = do
-      c <- addable hsp p
-      y <- pRange hsp p
-      return y
+pFail = Parser (const [])
+
+pSat :: (Sortcode->Bool) -> Parser Sortcode
+pSat p = do
+    c <- pSortcode
+    if p c then return c else pFail
 
 pSortcode :: Parser Sortcode
 pSortcode = Parser f
@@ -97,18 +95,31 @@ pSortcode = Parser f
     f [] = []
     f (x:xs) =[(x,xs)]
 
-  
-pRange :: HashedSortplan -> Product -> Parser Range
-pRange hsp p = do
-    (lo,hi) <- pUpper hsp p
-    return (lo, hi)
+(+++) :: Parser a -> Parser a -> Parser a
+p +++ q = Parser (\cs -> case parse (p `mplus` q) cs of
+                     [] -> []
+                     (x:xs) -> [x])
+
+pUpperBound :: (Sortcode->Bool)->Parser Sortcode
+pUpperBound p = do
+  lo <- pSortcode
+  hi <- pSat p
+  if hi == [] then return lo else return hi
+
+
+pRange :: (Sortcode->Bool) -> Parser Range
+pRange p = do
+  lo <- pSortcode
+  hi <- pUpperBound p
+  return (lo,hi)
 
 
 
 exSpl  = mkSortplan 1
 exHash = asHashedSortplan exSpl
+exProd = ((snd.head) exSpl)
 
-xxx = parse (pRange exHash 1) ((snd.head) exSpl)
+xxx = parse (pRange (addable exHash 1))  exProd
             
 
 
