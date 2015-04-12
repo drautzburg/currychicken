@@ -90,6 +90,9 @@ which extract the time or the value from a change respectivly.
 
 %if False
 \begin{code}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+
 module Temporal where
 import Data.List.Ordered
 import qualified Data.Map.Lazy as M
@@ -99,6 +102,8 @@ import Control.Applicative
 import qualified Data.Foldable as F
 import System.TimeIt
 import Debug.Trace
+import Text.PrettyPrint.GenericPretty
+import Data.Typeable
 \end{code}
 %endif
 
@@ -107,11 +112,10 @@ type Time = Integer
 data Change a = Chg {
             ct :: Time, -- "change time"
             cv :: a     -- "change value"
-        } deriving (Eq,Show)
+        } deriving (Eq,Show, Generic, Typeable)
 
--- make the String-representation less verbose
---instance Show a => Show (Change a) where
---xxx        show (Chg t v) = "(" ++ show t ++ "," ++ show v ++ ")"
+instance (Out a) => Out (Change a)
+--instance (Typeable a) => Typeable (Change a)
 \end{code}
 
 \subsubsection{Some handy functions}
@@ -124,7 +128,6 @@ cvfc f e = Chg (ct e) (f $ cv e)
 -- "time function" - apply a function to the time, return Change
 ctfc :: (Time -> Time) -> Change a -> Change a
 ctfc f e = Chg (f $ ct e) (cv e)
-
 
 -- "time function" - apply a function to the time, return a
 ctf :: (Time -> b) -> Change a -> b
@@ -167,36 +170,37 @@ cNubBy eq xd (e:es)
 \end{code}
 
 The list of changes needs to be kept ordered at all times. This allows
-us to slice a list changes by specifying two time predicates
-representing lower and upper conditions. The resulting list contains
-all changes where both predicates hold. Once the upper predicate
-returns false we don't have to traverse the list any further.
-
-we allow predicates for the whole change, or just its time component.
-
-For time-slicing, We use predicates instead of Times so we can easily
-slice with just a lower bound (think: \emph{sliceFrom}) or just an
-upper bound and using |anytime| for the respective other bound.
+us to slice a list changes by specifying time values and ask for all
+changes which lie after or before a given Time or which lie between
+two times. In general, the lower bound is included and the upper bound
+is excluded from the results.
 
 \begin{code}
+-- changes at or after t
+cAfter :: Time -> [Change a] -> [Change a]
+cAfter t cs = dropWhile ((<t).ct) cs
 
--- Return change where p holds plus all following changes
--- Maybe return change value of last change where p didn't hold
-cPart :: (Time->Bool) -> [Change a] -> (Maybe a,[Change a])
-cPart p cs = cPart' Nothing p cs
-        where
-            cPart' a p []     = (a,[])
-            cPart' a p (x:xs) 
-                    | p (ct x)  = (a, x:xs)
-                    | otherwise = cPart' (Just $ cv x) p xs
+-- changes before t
+cBefore :: Time -> [Change a] -> [Change a]
+cBefore t cs = takeWhile ((<t).ct) cs
 
+-- changes at or before t
+cBefore' :: Time -> [Change a] -> [Change a]
+cBefore' t cs = takeWhile ((<=t).ct) cs
 
-cWindow ::(Time->Bool) -> (Time->Bool) -> [Change a] -> [Change a]
-cWindow p1 p2 cs = let (_, cs') = cPart p1 cs
-                   in  takeWhile (p2.ct) cs'
+-- changes at or after t1 and before t2
+cBetween :: Time -> Time -> [Change a] -> [Change a]
+cBetween t1 t2 = (cBefore t2) . (cAfter t1)
 
+-- last change at or before t
+cAt :: Time -> [Change a] -> Maybe (Change a)
+cAt t cs = let c  = cBefore' t cs
+               c' 
+                       | null c    = Nothing
+                       | otherwise = Just (last c)
+           in
+               c'
 
-anytime = const True
 \end{code}
 
 For our work we will have to align two lists of Changes in a meaningful
@@ -253,8 +257,9 @@ extracted by the implicitly created functions |tc| and |te|.
 data Temporal a = Temporal {
     td :: a,         -- "temporal default"
     tc :: [Change a] -- "temporal changes"
-} deriving (Eq, Show)
+ } deriving (Eq, Show, Generic, Typeable)
 
+instance (Out a) => Out (Temporal a)
 
 -- get change values including the default
 tChangeValues :: Temporal a -> [a]
@@ -271,26 +276,18 @@ fall into a given time window, where the upper bound is excluded.
 
 
 \begin{code}
--- limit temporal to $t1 \leq te$
 tAfter :: Time -> Temporal a -> Temporal a
-tAfter t1 (Temporal xd chs) = case c of
-                                 Nothing -> Temporal xd late
-                                 Just c' -> Temporal c'  late
-        where
-            (c,late)  = cPart (<= t1) chs
+tAfter t1 (Temporal d cs) = Temporal d (cAfter t1 cs)
 
--- limit temporal to $t1 \leq te < t2$
-tWindow :: (Time, Time) -> Temporal a -> Temporal a
-tWindow (t1, t2) tpr = let Temporal xd xs = tAfter t1 tpr
-                       in  Temporal xd (takeWhile ((< t2) . ct) xs)
+-- changes before t2
+tBefore :: Time -> Temporal a -> Temporal a
+tBefore t2 (Temporal d cs) = Temporal d (cBefore t2 cs)
 
-tChangesAfter :: Time -> Temporal a -> [Change a]
-tChangesAfter t1 tpr 
-        |  needsDefault = (Chg t1 (td tpr)) : changes
-        | otherwise     = changes
-        where
-            (c,changes) = cPart (>= t1) (tc tpr)
-            needsDefault = null changes || (ct.head) changes > t1
+-- changes at or after t1 and before t2
+tBetween :: Time -> Time -> Temporal a -> Temporal a
+tBetween t1 t2 (Temporal d cs) = Temporal d (cBetween t1 t2 cs)
+
+
 
 tDelay :: Time -> Temporal a -> Temporal a
 tDelay t (Temporal d cs) = Temporal d (cDelay t cs)
@@ -306,7 +303,12 @@ The two functions below only differ in the order of their parameters.
 
 \begin{code}
 tAt :: Time -> Temporal a -> a
-tAt t = td . (tWindow (t,t))
+tAt t (Temporal d []) = d
+tAt t tpr = let c = cAt t (tc tpr)
+            in case c of
+                   Nothing  -> td tpr
+                   Just chg -> cv chg
+
 
 -- turn a Teporal into a function over time
 tFt :: Temporal a -> (Time -> a)
@@ -342,7 +344,8 @@ ext2 :: Temporal Int
 ext2   = Temporal 10 [Chg 5 0]
 
 -- Show the first changes only
-exShow (Temporal d cgs) = Temporal d (take 6 cgs)
+exShow tpr = putStrLn (take 100 $ pretty tpr)
+
 
 \end{code}
 
@@ -359,14 +362,13 @@ instance F.Foldable Temporal where
 
 A Fold allows us e.g. to sum up all values.
 
-|*Main> F.foldr (+) 0 exNat|\\
-  \eval{F.foldr (+) 0 exNat}
+
+\input{natFoldr.inc}
 
 Obviously |F.foldr (+) 0| is the same as |sum|, but the package
 |Data.Foldable| knows this too and we get |sum| for free.
 
-|*Main> F.sum exNat|\\
-  \eval{F.sum exNat}
+\input{natSum.inc}
 
 \subsubsection{Functor}
 
@@ -382,8 +384,7 @@ instance Functor Temporal where
 We can e.g. now convert the ascending natural numbers in |exNat| into
 squares, which occur at the same times.
 
-|*Main> exShow $  fmap (^2) exNat|\\
-  \eval{exShow $  fmap (^2) exNat}
+\input{natFmap.inc}
 
 \subsubsection{Monad}
 
@@ -394,32 +395,66 @@ of Lists into a List. In our case we'll have to deal with Temporal
 Temporals.
 
 We define a the Monad instance with respect to the flattening function
-|tJoin|. At its heart is |joinChs| to handle a List of |Change
-(Temporal a)|. The outer Change has a change-time, and tJoin takes the
-default from the embedded Temporal and schedules it to the
-change-time, which turns it into a plain Change. Then it takes the
-Changes of the embedded Temporal and filters those which occur beween
-this change-time and the next change-time. The remaining code deals
-with things at the beginning or end of the flattening.
+|tJoin| which converts a Temporal Temporal into a mere Tempora,
+i.e. it removes on level of nesting. This function is amazingly
+difficult to write and understand.
 
 \begin{figure}[htb!]
 \centering
 \includegraphics[width=8cm]{tJoin.png}
-\caption{Flattening Temporals}
+\caption{A Temporal Temporal}
 \end{figure}
 
 \needspace{20em}
+
 \begin{code}
-
--- xxx must thread default too
 tJoin :: Temporal (Temporal a) -> Temporal a
-tJoin (Temporal tdef tchs) = Temporal (td tdef) (fst changes ++ snd changes)
+tJoin (Temporal tdef []) = tdef
+tJoin tp@(Temporal tdef ctps) 
+        | null cs'  =  Temporal (td tdef) (tj ctps)
+        | otherwise =  Temporal (td tdef) (cs' ++ tj' ctps)
         where
-            changes = foldl f ([], tc tdef) tchs
-            f (res,cs) tp  = let res' = res ++ cWindow anytime (< ct tp) cs
-                                 cs'  = cWindow (>= ct tp) anytime (tc $ cv tp)
-                             in (res', cs')
+            cs  = tc tdef
+            cs' = cBefore (ct $ head ctps) cs
 
+tj, tj' :: [Change (Temporal a)] -> [Change a]
+
+-- before first change was found
+tj  ((Chg t (Temporal d [])):[])  =  [Chg t d]
+tj  ((Chg t (Temporal d cs)):[])  =  preDef t d cs (cAfter t cs)
+ 
+tj  ((Chg t (Temporal d [])):cts) =  (Chg t d) : (tj cts)
+tj  ((Chg t (Temporal d cs)):cts)
+        | null cs'  =  preDef t d cs (tj cts)
+        | otherwise =  preDef t d cs cs' ++ (tj' cts)
+          where
+              cs' = cBetween t (ct $ head cts) cs
+
+-- after first change was found
+tj' ((Chg t (Temporal d cs)):[]) =  preC0 t cs (cAfter t cs)
+
+tj' ((Chg t (Temporal d cs)):cts) =  preC0 t cs cs' ++ (tj' cts)
+          where
+              cs' =  cBetween t (ct $ head cts) cs
+\end{code}
+
+\begin{code}
+-- prepend first change if required
+preC0 t cs cs'
+        | null bef   = cs'
+        | tx == t    = cs'
+        | otherwise  = (Chg t vx) : cs'
+        where
+            bef          = cBefore' t cs
+            (Chg tx vx)  = last bef
+
+-- prepend default as new change
+preDef t d cs cs'
+        | null cs   = cs'
+        | t == tx   = cs'
+        | otherwise = (Chg t d) : cs'
+        where
+            (Chg tx vx) = head cs
 \end{code}
 
 \begin{code}
@@ -444,8 +479,8 @@ instance Monad Temporal where
 
 \subsubsection{Applicative}\label{applicative}
 
-Finally the |Applicative| instance allows us to do similar things, but
-no longer limited to unary functions. 
+Finally the |Applicative| instance allows us to do similar things as
+|Functor|, but no longer limited to unary functions.
 
 \begin{code}
 instance Applicative Temporal where
@@ -470,16 +505,12 @@ hit the first (and only) change of |ext2|, which occurs at $t=5$. So
 at $t=5$ the result should drop to zero and remain zero afterwards,
 because there are no further changes in |ext2|
 
-
-|*Main> exShow $ (*) <$> exNat <*> ext2|\\
-  \eval{exShow $ (*) <$> exNat <*> ext2}
+\input{appl1.inc}
 
 We can verify that indeed none of the remaining values is different
 from zero by using |tNubBy| which sould remove the duplicate zeros.
 
-|*Main> tNubBy (==) $ (*) <$> exNat <*> ext2|\\
-  \eval{tNubBy (==) $ (*) <$> exNat <*> ext2}
-
+\input{appl2.inc}
 
 The magic operators here are |<$>| and |<*>| where |<$>| separates the
 function (here |(*)|) from its arguments and |<*>| separates the
@@ -513,7 +544,7 @@ It would be quite nice to specify a Temporal which shows some periodic
 behavior. We must however, ask ourselves what happens when we repeat a
 |Temporal| which takes longer than the time between repetitions. What
 if we repeat the same song every minute, but the song takes three
-minutes? Certainly we cannot simply deleay and repeat the Changes.
+minutes? Certainly we cannot simply delay and repeat the Changes.
 
 Luckily |tJoin| already takes care of this. All we need to do is
 create a |Temporal Temporal| where the outer Temporal stands for the
@@ -526,7 +557,7 @@ which are teken from an ordered List.
 \begin{code}
 tRepeat :: [Time] -> Temporal a -> Temporal a
 tRepeat times tpr = let changes = map (sched tpr) times
-                in tJoin $ Temporal tpr changes
+                    in tJoin $ Temporal tpr changes
         where
             sched :: Temporal a -> Time -> Change (Temporal a)
             sched tpr' t = Chg t (Temporal (td tpr') (cDelay t (tc tpr')))
@@ -547,25 +578,20 @@ The most general case is scheduling \emph{different} Temporals to
 become effective at different times.xxx
 
 
-
-
 Watch how |ext2| repeats itself every 12 units of time.
 
-|*Main> exShow (tCycle 12 ext2)|\\
-  \eval{exShow (tCycle 12 ext2)}
+\input{cyc1.inc}
+
 
 If we repeat with a higher frequeny, |ext2| can no longer drop to
 zero, because at that time the next repetition has already started.
 
-|*Main> exShow (tCycle 4  ext2)|\\
-  \eval{exShow (tCycle 4  ext2)}
+\input{cyc2.inc}
 
 The large |exNat| is also not a problem. Hey, this would even work if
 the Temporal had an infinite number of changes.
 
-|*Main> exShow (tCycle 3  exNat)|\\
-  \eval{exShow (tCycle 3  exNat)}
-
+\input{cyc3.inc}
 
 \subsubsection{Temporal Collections}
 
@@ -592,6 +618,8 @@ of what we want. This will work on any collection which are instances
 of |Functor|.
 
 \begin{code}
+
+
 exTrains1 :: M.Map String (Temporal String)
 exTrains1 = M.insert "IC102" (Temporal 
                               "Konstanz" 

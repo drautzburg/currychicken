@@ -1,7 +1,13 @@
-import Temporal
-f = (Temporal {td = -3, tc = []}) >>= \t1 ->
-    (Temporal {td = -4, tc = [Chg {ct = -1, cv = -2}]}) >>= \t2 ->
-    return (t1,t2)
+f 0 = 0
+f 1 = 1
+f x 
+          | x> 1 = 2
+          | otherwise = -1
 
+g 0 = 10
+g 1 = 20
+g x 
+          | x> 1 = 30
+          | otherwise = -40
 
-g = fmap (\t2 -> return t2 ::Temporal Int) (Temporal {td = -4, tc = [Chg {ct = -1, cv = -2}]}) 
+h x = g (f x)
