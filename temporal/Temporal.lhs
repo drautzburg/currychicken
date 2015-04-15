@@ -79,6 +79,7 @@ counterpart.
 
 module Temporal where
 import Data.Maybe
+import Data.List
 import qualified Data.Map.Lazy as M
 import Control.Monad
 import qualified Data.DList as D
@@ -113,6 +114,19 @@ instance Ord Time
             compare _     DPast = GT
             compare (T t1) (T t2)  = compare t1 t2
 \end{code}
+
+Thus we get all operations which rely on comparing times for free.    
+
+\begin{run}
+|*Main> sort [T 42, DPast, T 41]|\\
+  \eval{sort [T 42, DPast, T 41]}
+
+|*Main> maximum [T 42, DPast, T 41]|\\
+  \eval{maximum [T 42, DPast, T 41]}
+
+\end{run}
+
+
 
 \subsection{Temporal}
 
