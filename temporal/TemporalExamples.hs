@@ -2,8 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
 import Temporal
-import Text.PrettyPrint.GenericPretty
---import System.Eval.Haskell
+import Text.Show.Pretty
 import Language.Haskell.Interpreter
 import Data.Either
 import System.IO
@@ -18,11 +17,11 @@ run1 s = runInterpreter $ do
              loadModules ["Temporal"] 
              setImportsQ [("Prelude", Nothing), 
                           ("Temporal", Nothing), 
-                          ("Text.PrettyPrint.GenericPretty", Nothing),
+                          ("Text.Show.Pretty", Nothing),
                           ("Data.Foldable", Just "F"),
                           ("Control.Applicative", Nothing)
                          ]  
-             res <- eval ("take 900 $ pretty $ " ++ s)
+             res <- eval ("take 900 $ ppShow $ " ++ s)
              (return res) 
        :: IO(Either InterpreterError String)
 

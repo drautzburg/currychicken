@@ -11,3 +11,12 @@ g x
           | otherwise = -40
 
 h x = g (f x)
+
+bar = let x=1
+      in 
+          | x==1 = 2
+
+bar1 x = let y
+       | x == 1 = 2
+         in
+             y
