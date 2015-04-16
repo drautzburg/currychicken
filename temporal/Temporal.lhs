@@ -84,12 +84,13 @@ import qualified Data.Map.Lazy as M
 import Control.Monad
 import Control.Applicative
 import qualified Data.Foldable as F
+
 import System.TimeIt
+import qualified Text.Show.Pretty as Pr
 import Debug.Trace
-import Text.PrettyPrint.GenericPretty
-import Data.Typeable
 
 bench x = (timeIt . print) x
+pp x = putStrLn $ Pr.ppShow x
 \end{code}
 %endif
 
@@ -131,7 +132,7 @@ Thus we get all operations which rely on comparing times for free.
 
 The main property of a |Temporal| is that you can step through
 it. There are many implementation options, but we chose the following:
-with each \emph{step}, you get
+with each \emph{fetch}, you get
 
 \begin{itemize}
 \item the value of the next change
@@ -140,7 +141,7 @@ with each \emph{step}, you get
 \end{itemize}
 
 This is roughly equivalent to a List of |(Time,Value)| pairs, where
-the new Temporal, which is returned with each step is the tail of the
+the new Temporal, which is returned with each fetch is the tail of the
 List and the empty list you get at the end is replaced by |Nothing|.
 
 However, we do not make any assumptions about the internal
@@ -150,9 +151,20 @@ thing, which changes over time.
 
 \begin{code}
 data Temporal a = Temporal {
-            step :: (a, Time, Maybe (Temporal a))
+            fetch :: (Time, a, Maybe (Temporal a))
         }
 \end{code}
+
+To siply advance a Temporal without caring about the time and value,
+we provide a |step| function. This function will fail when the
+Temporal is exhausted.
+
+\begin{code}
+step :: Temporal a -> Temporal a
+step tpr = let (t,v,mtp) = fetch tpr
+           in fromJust mtp
+\end{code}
+
 
 \subsubsection{Converting to and from Lists}
 
@@ -168,9 +180,9 @@ fromList ((t,v):xs) = Temporal nxt
         where
             dupe = fst (head xs) == t
             nxt 
-                    | null xs   = (v,t,Nothing)
-                    | dupe      = step $ fromList xs
-                    | otherwise = (v,t, Just $ fromList xs)
+                    | null xs   = (t, v, Nothing)
+                    | dupe      = fetch $ fromList xs
+                    | otherwise = (t, v, Just $ fromList xs)
 \end{code}
 
 \begin{run} 
@@ -192,7 +204,7 @@ things, useful for printing a |Temporal|.
 -- apply a function to each (Time, Value) and accumulate the results
 traverseBy :: (a -> Time -> b) -> Temporal a -> [b]
 traverseBy f tpr = 
-        let (vx, tx, mtp ) = step tpr
+        let (tx, vx, mtp ) = fetch tpr
             tpr'           = fromJust mtp
             y              = f vx tx
         in case () of _
@@ -246,13 +258,13 @@ function, like |+| or |*| and a starting value. Such things are called
 
 \begin{code}
 instance F.Foldable Temporal where
-        foldr f z tpr = let (v,t, mtp) = step tpr
-                            tpr'       = fromJust mtp
+        foldr f z tpr = let (t, v, mtp) = fetch tpr
+                            tpr'        = fromJust mtp
                         in case mtp of
                                Nothing -> f v z
                                _       -> f v (F.foldr f z tpr') 
 \end{code}
-
+\needspace{10em}
 \begin{run}
 |*Main> F.foldr (+) 0 ex1|\\
   \eval{F.foldr (+) 0 ex1}
@@ -269,11 +281,11 @@ function to each element, and |Temporal| is one of them.
 instance Functor Temporal where
         fmap f tpr = Temporal nxt
                 where
-                    (v,t, mtp) = step tpr
+                    (t, v, mtp) = fetch tpr
                     tpr' = do
                               tpx <- mtp
                               return (fmap f tpx)
-                    nxt  = (f v, t, tpr')
+                    nxt  = (t, f v, tpr')
 \end{code}
 
 
@@ -296,28 +308,26 @@ and the iteration ends, when there are no more changes.
 \caption{Aligning changes}
 \end{figure}
 
+\needspace{20em}
 \begin{code}
 instance Applicative Temporal where
         pure x = fromList [(DPast, x)]
-        f <*> x = let (vf,tf, mtpf)  = step f
-                      (vx,tx, mtpx)  = step x
-                      f'             = fromJust mtpf
-                      x'             = fromJust mtpx
-                      result remains = Temporal (vf vx, max tx tf, remains)          
-                  in case cmpTnext mtpf mtpx of
-                         Nothing -> result Nothing
-                         Just LT -> result $ Just (f' <*> x)
-                         Just GT -> result $ Just (f  <*> x')
-                         Just EQ -> result $ Just (f' <*> x')
--- helper: compare the times of next changes
-cmpTnext :: Maybe (Temporal a) -> Maybe (Temporal b) -> Maybe Ordering
-cmpTnext Nothing      Nothing     = Nothing
-cmpTnext Nothing      (Just tpr2) = Just GT
-cmpTnext (Just tpr2)  Nothing     = Just LT
-cmpTnext (Just tpr1)  (Just tpr2) = let (_,t1, _)  = step tpr1
-                                        (_,t2, _)  = step tpr2
-                                    in Just $ compare t1 t2
+        f <*> x
+                | isNothing mtpf && isNothing mtpx  = result Nothing
+                | isNothing mtpf || mtpx `bef` mtpf = jresult (f      <*> step x)
+                | isNothing mtpx || mtpf `bef` mtpx = jresult (step f <*> x)
+                | otherwise                        = jresult (step f <*> step x)
+                where
+                    (tf,vf, mtpf)    = fetch f
+                    (tx,vx, mtpx)    = fetch x
+                    bef a b          = isJust a && (fromJust a) `before`  (fromJust b)
+                    result  remains  = Temporal (max tx tf, vf vx, remains)          
+                    jresult remains  = result (Just remains)
 
+before :: Temporal a -> Temporal b -> Bool
+before tpr1 tpr2 = let (t1,_,_) = fetch tpr1
+                       (t2,_,_) = fetch tpr2
+                   in t1 < t2
 \end{code}
 \needspace{20em}
 \begin{run}
@@ -333,20 +343,61 @@ cmpTnext (Just tpr1)  (Just tpr2) = let (_,t1, _)  = step tpr1
 
 \subsubsection{Monad}
 
+You can imagine a |Monad| as something which can be nested and
+flattened using a function typically called |join|. A |List| is a
+Monad, because you can have Lists of Lists and you can flatten a List
+of Lists into a List. In our case we'll have to deal with Temporal
+Temporals.
+
+We define a the Monad instance with respect to the flattening function
+|tJoin| which converts a Temporal Temporal into a mere Temporal,
+i.e. it removes on level of nesting.
+
+\begin{figure}[htb!]
+\centering \includegraphics[width=4cm]{tJoin.png}
+\caption{Temporal of Temporal}
+\label{fig:tJoin}
+\end{figure}
+
+In Figure \ref{fig:tJoin} you see a |Temporal Temporal|. The inner
+changes are connected by the black arrows, and the outer changes are
+connected by the red arrows. The task of |tJoin| is to construct the
+blue connections, which will be a plain |Temporal|.
+
+The blue path must obey the following rules
+\begin{itemize}
+\item it starts with the very first (upper left) cell
+\item it ends with the very last (lower right) cell
+\item the times of the connected cells are ascending
+\item the time of each cell lies before the time of the next outer change (if any)
+\item all possible cells are included (no cell is needlessly omitted)
+\item no times or values are altered
+\end{itemize}
+
 \begin{code}
+{-
 tJoin :: Temporal (Temporal a) -> Temporal a
 tJoin ttpr =
-  let (vo,to, mtpo)    = step ttpr
-      (vi,ti, mtpi)    = step vo
-      (vi',ti', mtpi') = step (fromJust mtpi)
+  let (vo,to, mtpo)    = fetch ttpr
+      (vi,ti, mtpi)    = fetch vo
+      go direction   = Temporal (vi, ti, Just  $tJoin $ direction  $ fromJust mtpo)
   in case cmpTnext mtpo mtpi of
-    Nothing -> Temporal (vi, ti, Nothing)
-    Just LT -> Temporal (vi, ti, down ttpr)
+         Nothing -> Temporal (vi, ti, Nothing)
+         Just LT -> trace "lt" $ go right
+         Just EQ -> trace "eq" $ go right
+         Just GT -> trace "gt" $ go down 
 
-down :: Temporal(Temporal a) -> Temporal(Temporal a)
-down = undefined
-   
-                    
+right :: Temporal a -> Temporal a
+right tpr = let (v,t,mtp) = fetch tpr
+                (v', t', mtp') = fetch (fromJust mtp)
+           in Temporal (v',t', mtp')
+
+down :: Temporal(Temporal a) -> Temporal (Temporal a)
+down tpr = let (vo,to,mtpo)     = fetch tpr
+           in Temporal (right vo, to, mtpo)
+-}   
+ex4 = fmap (\x -> ex1) ex1
+         
 \end{code}
 
 \end{document}
