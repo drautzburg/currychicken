@@ -82,7 +82,6 @@ import Data.Maybe
 import Data.List
 import qualified Data.Map.Lazy as M
 import Control.Monad
-import qualified Data.DList as D
 import Control.Applicative
 import qualified Data.Foldable as F
 import System.TimeIt
@@ -332,6 +331,23 @@ cmpTnext (Just tpr1)  (Just tpr2) = let (_,t1, _)  = step tpr1
   \eval{(*) <$> ex1 <*> ex2}
 \end{run}
 
+\subsubsection{Monad}
+
+\begin{code}
+tJoin :: Temporal (Temporal a) -> Temporal a
+tJoin ttpr =
+  let (vo,to, mtpo)    = step ttpr
+      (vi,ti, mtpi)    = step vo
+      (vi',ti', mtpi') = step (fromJust mtpi)
+  in case cmpTnext mtpo mtpi of
+    Nothing -> Temporal (vi, ti, Nothing)
+    Just LT -> Temporal (vi, ti, down ttpr)
+
+down :: Temporal(Temporal a) -> Temporal(Temporal a)
+down = undefined
+   
+                    
+\end{code}
 
 \end{document}
 
