@@ -86,11 +86,11 @@ import Control.Applicative
 import qualified Data.Foldable as F
 
 import System.TimeIt
-import qualified Text.Show.Pretty as Pr
+--import qualified Text.Show.Pretty as Pr
 import Debug.Trace
 
 bench x = (timeIt . print) x
-pp x = putStrLn $ Pr.ppShow x
+-- pp x = putStrLn $ Pr.ppShow x
 \end{code}
 %endif
 
@@ -150,23 +150,11 @@ not make any assumptions about the actual data, i.e. the type of the
 thing, which changes over time.
 
 \begin{code}
-data Temporal a = Temporal {
-            fetch :: (Time, a, Maybe (Temporal a))
-        }
-\end{code}
-
-To siply advance a Temporal without caring about the time and value,
-we provide a |step| function. This function will fail when the
-Temporal is exhausted.
-
-\begin{code}
-step :: Temporal a -> Temporal a
-step tpr = let (t,v,mtp) = fetch tpr
-           in fromJust mtp
+data Temporal a = Temporal [(Time, a)] deriving (Eq, Show)
 \end{code}
 
 
-\subsubsection{Converting to and from Lists}
+\subsubsection{Creating}
 
 A |Temporal| can be created from a |List| of |(Time, Value)|
 Pairs. The list must be ordered by time and the first time must be
@@ -174,15 +162,8 @@ Pairs. The list must be ordered by time and the first time must be
 for the same |Time|, only the last value will survive.
 
 \begin{code}
-fromList :: [(Time, a)] -> Temporal a
-fromList [] = error "empty list"
-fromList ((t,v):xs) = Temporal nxt
-        where
-            dupe = fst (head xs) == t
-            nxt 
-                    | null xs   = (t, v, Nothing)
-                    | dupe      = fetch $ fromList xs
-                    | otherwise = (t, v, Just $ fromList xs)
+temporal :: a -> [(Time, a)] -> Temporal a
+temporal def tps = Temporal $ (DPast, def) : tps
 \end{code}
 
 \begin{run} 
@@ -192,63 +173,11 @@ value at changes are always equal to the time, so they are easy to
 remember.
 
 \begin{code}
-ex1 = fromList [(DPast, 1), (T 3,3), (T 7, 7)]
-ex2 = fromList [(DPast, 2), (T 5,5), (T 9, 9)]
+ex1 = temporal 1 [(T 3,3), (T 7, 7)]
+ex2 = temporal 2 [(T 5,5), (T 9, 9)]
 \end{code}
 \end{run}
 
-A |Temporal| can be converted into a List. This is, among other
-things, useful for printing a |Temporal|.
-
-\begin{code}
--- apply a function to each (Time, Value) and accumulate the results
-traverseBy :: (a -> Time -> b) -> Temporal a -> [b]
-traverseBy f tpr = 
-        let (tx, vx, mtp ) = fetch tpr
-            tpr'           = fromJust mtp
-            y              = f vx tx
-        in case () of _
-                              | isNothing mtp  -> [y]
-                              | otherwise      -> y : traverseBy f tpr'
-
-
--- get all the change times
-tTimes :: Temporal a -> [Time]
-tTimes tpr = let f a t= t
-             in traverseBy f tpr
-
--- get all the values
-tValues :: Temporal a -> [a]
-tValues = let f a t = a
-          in traverseBy f 
-
-toList :: Temporal a -> [(Time, a)]
-toList tpr = zip (tTimes tpr) (tValues tpr)
-\end{code}
-
-\subsubsection{Eq and Show}
-
-Testing two Temporals for equality will be primarily needed for
-running tests. We're lazy here and resort to comparing the List
-representations.
-
-\begin{code}
-instance (Eq a) => Eq (Temporal a) where
-        tp1 == tp2 = toList tp1 == toList tp2
-\end{code}
-
-And this the equivalent of a |toString| method.
-
-\begin{code}
-instance (Show a) => Show (Temporal a) where
-        show tpr = "fromList " ++ show (toList tpr)
-
-\end{code}
-
-\begin{run}
-|*Main> ex1|\\
-  \eval{ex1}
-\end{run}
 
 \subsubsection{Foldable}
 
@@ -258,12 +187,10 @@ function, like |+| or |*| and a starting value. Such things are called
 
 \begin{code}
 instance F.Foldable Temporal where
-        foldr f z tpr = let (t, v, mtp) = fetch tpr
-                            tpr'        = fromJust mtp
-                        in case mtp of
-                               Nothing -> f v z
-                               _       -> f v (F.foldr f z tpr') 
+        foldr f z (Temporal chs) = let g (t,v) acc  = f v acc
+                                   in F.foldr g z chs
 \end{code}
+
 \needspace{10em}
 \begin{run}
 |*Main> F.foldr (+) 0 ex1|\\
@@ -272,6 +199,8 @@ instance F.Foldable Temporal where
 |*Main> F.foldr (*) 1 ex1|\\
   \eval{F.foldr (*) 1 ex1}
 \end{run}
+
+
 \subsubsection{Functor}
 
 A Functor is a thing, which allows applying (\emph{mapping}) a unary
@@ -279,15 +208,10 @@ function to each element, and |Temporal| is one of them.
 
 \begin{code}
 instance Functor Temporal where
-        fmap f tpr = Temporal nxt
-                where
-                    (t, v, mtp) = fetch tpr
-                    tpr' = do
-                              tpx <- mtp
-                              return (fmap f tpx)
-                    nxt  = (t, f v, tpr')
-\end{code}
+  fmap f (Temporal chs) = let g (t,v) = (t, f v)
+                          in Temporal (fmap g chs)
 
+\end{code}
 
 \begin{run}
 |*Main> fmap (* 2) ex1|\\
@@ -302,7 +226,6 @@ implement is |<*>|. It must fetch next values from either of the two
 Temporals, such that always the \emph{earlier} change is preferred
 and the iteration ends, when there are no more changes.
 
-
 \begin{figure}[htb!]
 \centering \includegraphics[width=6cm]{align.png}
 \caption{Aligning changes}
@@ -311,24 +234,22 @@ and the iteration ends, when there are no more changes.
 \needspace{20em}
 \begin{code}
 instance Applicative Temporal where
-        pure x = fromList [(DPast, x)]
-        f <*> x
-                | isNothing mtpf && isNothing mtpx  = result Nothing
-                | isNothing mtpf || mtpx `bef` mtpf = jresult (f      <*> step x)
-                | isNothing mtpx || mtpf `bef` mtpx = jresult (step f <*> x)
-                | otherwise                        = jresult (step f <*> step x)
-                where
-                    (tf,vf, mtpf)    = fetch f
-                    (tx,vx, mtpx)    = fetch x
-                    bef a b          = isJust a && (fromJust a) `before`  (fromJust b)
-                    result  remains  = Temporal (max tx tf, vf vx, remains)          
-                    jresult remains  = result (Just remains)
-
-before :: Temporal a -> Temporal b -> Bool
-before tpr1 tpr2 = let (t1,_,_) = fetch tpr1
-                       (t2,_,_) = fetch tpr2
-                   in t1 < t2
+        pure x = temporal x []
+        Temporal fs <*> Temporal xs = Temporal $ fs `apply` xs
+          where
+            apply gs [] = []
+            apply [] zs = []
+            apply gs zs
+              | gs `bef` zs = result gs zs : apply (tail gs) zs
+              | zs `bef` gs = result gs zs : apply gs        (tail zs)
+              | otherwise   = result gs zs : apply (tail gs) (tail zs)
+            result ((ta,va):_) ((tb,vb):_)  = (max ta tb, va vb)
+            bef as bs = let t       = fst  . head . tail
+                            noTail  = null . tail
+                            hasTail = not  . noTail
+                        in hasTail as && (noTail bs || t as < t bs)
 \end{code}
+
 \needspace{20em}
 \begin{run}
 |*Main> ex1|\\
@@ -403,3 +324,5 @@ ex4 = fmap (\x -> ex1) ex1
 \end{document}
 
 (define-key outline-minor-mode-map [(C-left)] 'hide-sublevels) 
+
+\end{document}
