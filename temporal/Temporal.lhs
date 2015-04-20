@@ -84,6 +84,7 @@ import qualified Data.Map.Lazy as M
 import Control.Monad
 import Control.Applicative
 import qualified Data.Foldable as F
+import Data.Function
 
 import System.TimeIt
 --import qualified Text.Show.Pretty as Pr
@@ -174,7 +175,7 @@ remember.
 
 \begin{code}
 ex1   = temporal 1 [(T 3,3), (T 7, 7)]
-ex2   = temporal 2 [(T 5,5), (T 9, 9)]
+ex2   = temporal 2 [(T 5,5), (T 9, 0)]
 exNat = temporal 0 [(T i, i) | i <- [1..]]
 \end{code}
 \end{run}
@@ -296,43 +297,20 @@ The blue path must obey the following rules
 \item no times or values are altered
 \end{itemize}
 
-\begin{code}
+I did not manage to implement a Monad instance in a readable
+way. This, and the fact I wouldnÄt know what to do with it, led be to
+believe that a Monad instance is not strictly required.
 
-instance Monad Temporal where
-  return x = temporal x []
-  a >>= b  = tJoin $ fmap b a
-
-tJoin :: Temporal (Temporal a) -> (Temporal a)
-tJoin ttpr = let listOfLists = map (\(t,v) -> (t, toList v)) (toList ttpr)
-             in Temporal $ tj DPast listOfLists
-
-
-tj :: Time -> [(Time, [(Time, a)])] -> [(Time, a)]
-tj t1 ((tOuter, vOuter):[])
-  = let (d, xs)  = tDropWhile' (<= t1) (Nothing, vOuter)
-    in case d of
-      Nothing -> xs
-      Just v  -> (max t1 tOuter, v) : xs
-
-tj t1 ((tOuter, vOuter):outers)
-  = let tNext = (fst .head) outers
-        (d, xs)  = tDropWhile' (<= t1) (Nothing, vOuter)
-        xs'      = takeWhile  ((< tNext) . fst) xs
-    in case d of
-      Nothing -> xs'
-      Just v  -> (max t1 tOuter, v) : xs'
-
-ex4 = temporal ex1 []
-tpr1 = Temporal [(DPast,3)]
-tpr2 = Temporal [(DPast,2),(T 5,5),(T 7,7)]
-x = (("*" ++). show) <$> tpr1
-
-
-
-
-\end{code}
 
 \subsection{Other Operations}
+
+Since Temporals are essentially Lists we can lift any List operation
+to operate of a Temporal.
+
+\begin{code}
+listLift  :: ([(Time, a1)] -> [(Time, a)]) -> Temporal a1 -> Temporal a
+listLift f tpr = Temporal $ f $ toList tpr
+\end{code}
 
 We can discard the initial part of a Temporal, such that the last
 discarded values becomes the value of |DPast|.
@@ -342,29 +320,18 @@ discarded values becomes the value of |DPast|.
 toList :: Temporal a -> [(Time, a)]
 toList (Temporal xs) = xs
 
-tDefault :: Temporal a -> a
-tDefault (Temporal []) = error "empty Temporal"
-tDefault (Temporal xs) = (snd . head) xs
-
-tChanges :: Temporal a -> [(Time,a)]
-tChanges (Temporal []) = error "empty Temporal"
-tChanges (Temporal xs) =  tail xs
-
-tDropWhile' :: (Time->Bool) -> (Maybe a, [(Time, a)]) -> (Maybe a, [(Time, a)])
-tDropWhile' p (dp, []) = (dp, [])
-tDropWhile' p (dp, ys@((t,v):xs'))
-  | p t = tDropWhile' p (Just v, xs')
-  | otherwise = (dp,ys)
-
+dpast :: Temporal a -> Temporal a
+dpast (Temporal []) = error "empty Temporal"
+dpast (Temporal xs) = temporal (snd $ head xs) (tail xs)
 
 tDropWhile :: (Time->Bool) -> Temporal a -> Temporal a
-tDropWhile p tpr = let (d,chs) = tDropWhile' p (Nothing, toList tpr)
-                   in temporal (fromJust d) chs
+tDropWhile p  = dpast . (listLift (dropWhile (p.fst)))
 
 tTakeWhile :: (Time->Bool) -> Temporal a -> Temporal a
-tTakeWhile p tpr = temporal (tDefault tpr)  (takeWhile (p . fst) $ tChanges tpr)
+tTakeWhile p = dpast . (listLift (takeWhile (p.fst)))
 
-                             
+tNub :: Eq a => Temporal a -> Temporal a
+tNub = listLift (nubBy (on (==) snd))
 \end{code}
 
 \end{document}
