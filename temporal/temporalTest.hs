@@ -21,7 +21,7 @@ instance (Arbitrary a, Eq a, Ord a) => Arbitrary (Temporal a)
             arbitrary = do
                 ts <- orderedList
                 (NonEmpty vs) <- arbitrary
-                return $ Temporal (zip (DPast:ts) vs)
+                return $ Temporal (zip (DPast:(nub ts)) vs)
 
 prop_foldable :: (Temporal Int) -> Bool
 prop_foldable tpr = F.foldr (*) 0 tpr == 0
@@ -35,6 +35,13 @@ prop_applicative2 tpr1 = ((*) <$> tpr1 <*> tpr1) == (fmap (^2) tpr1)
 
 prop_applicative3 :: (Temporal Int) -> (Temporal Int) -> Bool
 prop_applicative3 tpr1 tpr2 = ((*) <$> tpr1 <*> tpr2) == ((*) <$> tpr2 <*> tpr1)
+
+
+prop_tJoin :: (Temporal Int) -> (Temporal Int) -> Bool
+prop_tJoin tpr1 tpr2 = let f  = (*)
+                           y1 = f <$> tpr1 <*>  tpr2
+                           y2 = (f <$> tpr1) `ap` tpr2 
+                       in y1 == y2
 
 {-
 instance (Arbitrary a, Eq a) => Arbitrary (Temporal a)
@@ -70,6 +77,7 @@ testTemporal = do
     shortCheck prop_applicative1 
     shortCheck prop_applicative2 
     shortCheck prop_applicative3
+    shortCheck prop_tJoin
 
 
 

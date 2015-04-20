@@ -173,8 +173,9 @@ value at changes are always equal to the time, so they are easy to
 remember.
 
 \begin{code}
-ex1 = temporal 1 [(T 3,3), (T 7, 7)]
-ex2 = temporal 2 [(T 5,5), (T 9, 9)]
+ex1   = temporal 1 [(T 3,3), (T 7, 7)]
+ex2   = temporal 2 [(T 5,5), (T 9, 9)]
+exNat = temporal 0 [(T i, i) | i <- [1..]]
 \end{code}
 \end{run}
 
@@ -296,29 +297,74 @@ The blue path must obey the following rules
 \end{itemize}
 
 \begin{code}
-{-
-tJoin :: Temporal (Temporal a) -> Temporal a
-tJoin ttpr =
-  let (vo,to, mtpo)    = fetch ttpr
-      (vi,ti, mtpi)    = fetch vo
-      go direction   = Temporal (vi, ti, Just  $tJoin $ direction  $ fromJust mtpo)
-  in case cmpTnext mtpo mtpi of
-         Nothing -> Temporal (vi, ti, Nothing)
-         Just LT -> trace "lt" $ go right
-         Just EQ -> trace "eq" $ go right
-         Just GT -> trace "gt" $ go down 
 
-right :: Temporal a -> Temporal a
-right tpr = let (v,t,mtp) = fetch tpr
-                (v', t', mtp') = fetch (fromJust mtp)
-           in Temporal (v',t', mtp')
+instance Monad Temporal where
+  return x = temporal x []
+  a >>= b  = tJoin $ fmap b a
 
-down :: Temporal(Temporal a) -> Temporal (Temporal a)
-down tpr = let (vo,to,mtpo)     = fetch tpr
-           in Temporal (right vo, to, mtpo)
--}   
-ex4 = fmap (\x -> ex1) ex1
-         
+tJoin :: Temporal (Temporal a) -> (Temporal a)
+tJoin ttpr = let listOfLists = map (\(t,v) -> (t, toList v)) (toList ttpr)
+             in Temporal $ tj DPast listOfLists
+
+
+tj :: Time -> [(Time, [(Time, a)])] -> [(Time, a)]
+tj t1 ((tOuter, vOuter):[])
+  = let (d, xs)  = tDropWhile' (<= t1) (Nothing, vOuter)
+    in case d of
+      Nothing -> xs
+      Just v  -> (max t1 tOuter, v) : xs
+
+tj t1 ((tOuter, vOuter):outers)
+  = let tNext = (fst .head) outers
+        (d, xs)  = tDropWhile' (<= t1) (Nothing, vOuter)
+        xs'      = takeWhile  ((< tNext) . fst) xs
+    in case d of
+      Nothing -> xs'
+      Just v  -> (max t1 tOuter, v) : xs'
+
+ex4 = temporal ex1 []
+tpr1 = Temporal [(DPast,3)]
+tpr2 = Temporal [(DPast,2),(T 5,5),(T 7,7)]
+x = (("*" ++). show) <$> tpr1
+
+
+
+
+\end{code}
+
+\subsection{Other Operations}
+
+We can discard the initial part of a Temporal, such that the last
+discarded values becomes the value of |DPast|.
+
+\begin{code}
+
+toList :: Temporal a -> [(Time, a)]
+toList (Temporal xs) = xs
+
+tDefault :: Temporal a -> a
+tDefault (Temporal []) = error "empty Temporal"
+tDefault (Temporal xs) = (snd . head) xs
+
+tChanges :: Temporal a -> [(Time,a)]
+tChanges (Temporal []) = error "empty Temporal"
+tChanges (Temporal xs) =  tail xs
+
+tDropWhile' :: (Time->Bool) -> (Maybe a, [(Time, a)]) -> (Maybe a, [(Time, a)])
+tDropWhile' p (dp, []) = (dp, [])
+tDropWhile' p (dp, ys@((t,v):xs'))
+  | p t = tDropWhile' p (Just v, xs')
+  | otherwise = (dp,ys)
+
+
+tDropWhile :: (Time->Bool) -> Temporal a -> Temporal a
+tDropWhile p tpr = let (d,chs) = tDropWhile' p (Nothing, toList tpr)
+                   in temporal (fromJust d) chs
+
+tTakeWhile :: (Time->Bool) -> Temporal a -> Temporal a
+tTakeWhile p tpr = temporal (tDefault tpr)  (takeWhile (p . fst) $ tChanges tpr)
+
+                             
 \end{code}
 
 \end{document}

@@ -1,6 +1,6 @@
 include ../texmakefile
 
-Temporal.pdf: Temporal.lhs tJoin.png align.png *.inc
+Temporal.pdf: Temporal.lhs tJoin.png align.png 
 
 %.dyn_o: %.hs
 	ghc -dynamic -shared $? -o $@
