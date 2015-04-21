@@ -334,6 +334,38 @@ tNub :: Eq a => Temporal a -> Temporal a
 tNub = listLift (nubBy (on (==) snd))
 \end{code}
 
+\subsection{Other Operations}
+
+We can discard the initial part of a Temporal, such that the last
+discarded values becomes the value of |DPast|.
+
+\begin{code}
+switchAt :: Time -> (Temporal a) -> (Temporal a)
+switchAt t (Temporal []) = (Temporal [])
+switchAt t (Temporal xs)
+  | null (tail xs)    = Temporal (tot xs)
+  | th <= t && tt > t = Temporal (tot xs)
+  | otherwise         = switchAt t (Temporal (tail xs))
+  where
+    tot ((ty,vy):xs) = ((max t ty, vy):xs)
+    th = (fst . head) xs
+    tt = (fst . head . tail) xs
+
+(Temporal ((t1,v1):[]))         `tBind` f =                      switchAt t1 (f v1)
+(Temporal ((t1,v1):(t2,v2):xs)) `tBind` f = ((tTakeWhile (< t2) . (switchAt t1)) (f v1)) `tAppend` ((Temporal ((t2,v2):xs)) >>= f)
+
+tAppend (Temporal xs) (Temporal ys) = Temporal (xs ++ ys)
+
+instance Monad Temporal
+         where return x = temporal x []
+               m >>= f  = m `tBind` f
+
+
+ex10 = Temporal [(DPast,3)]
+ex11 = Temporal [(DPast,2),(T 1,5),(T 3,3)]
+
+\end{code}
+
 \end{document}
 
 (define-key outline-minor-mode-map [(C-left)] 'hide-sublevels) 
