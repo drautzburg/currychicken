@@ -87,11 +87,11 @@ import qualified Data.Foldable as F
 import Data.Function
 
 import System.TimeIt
---import qualified Text.Show.Pretty as Pr
+import qualified Text.Show.Pretty as Pr
 import Debug.Trace
 
 bench x = (timeIt . print) x
--- pp x = putStrLn $ Pr.ppShow x
+pp x = putStrLn $ Pr.ppShow x
 \end{code}
 %endif
 
@@ -141,14 +141,9 @@ with each \emph{fetch}, you get
 \item a new |Temporal| or |Nothing|, i.e. a |Maybe Temporal|
 \end{itemize}
 
-This is roughly equivalent to a List of |(Time,Value)| pairs, where
-the new Temporal, which is returned with each fetch is the tail of the
-List and the empty list you get at the end is replaced by |Nothing|.
-
-However, we do not make any assumptions about the internal
-representation, i.e. it does not have to be a List. Likewise, we do
-not make any assumptions about the actual data, i.e. the type of the
-thing, which changes over time.
+This is what Lists do, and the new Temporal returned with each step is
+simply the tail of the List. Hence we choose to use List as the
+underlying structure.
 
 \begin{code}
 data Temporal a = Temporal [(Time, a)] deriving (Eq, Show)
@@ -157,14 +152,15 @@ data Temporal a = Temporal [(Time, a)] deriving (Eq, Show)
 
 \subsubsection{Creating}
 
-A |Temporal| can be created from a |List| of |(Time, Value)|
-Pairs. The list must be ordered by time and the first time must be
-|DPast|. The list can be infinite. Should there be duplicate values
-for the same |Time|, only the last value will survive.
+A |Temporal| can be created from a |List| of |(Time, Value)| Pairs. To
+discourage forgetting a |DPast| value we explicitly ask for a default
+value. The remaining List elements mut be ordered by time. The list
+can be infinite.
+
 
 \begin{code}
 temporal :: a -> [(Time, a)] -> Temporal a
-temporal def tps = Temporal $ (DPast, def) : tps
+temporal def chs = Temporal $ (DPast, def) : chs
 \end{code}
 
 \begin{run} 
@@ -267,14 +263,9 @@ instance Applicative Temporal where
 \subsubsection{Monad}
 
 You can imagine a |Monad| as something which can be nested and
-flattened using a function typically called |join|. A |List| is a
-Monad, because you can have Lists of Lists and you can flatten a List
-of Lists into a List. In our case we'll have to deal with Temporal
-Temporals.
-
-We define a the Monad instance with respect to the flattening function
-|tJoin| which converts a Temporal Temporal into a mere Temporal,
-i.e. it removes on level of nesting.
+flattened. A |List| is a Monad, because you can have Lists of Lists
+and you can flatten a List of Lists into a List. In our case we'll
+have to deal with Temporal Temporals.
 
 \begin{figure}[htb!]
 \centering \includegraphics[width=4cm]{tJoin.png}
@@ -282,25 +273,41 @@ i.e. it removes on level of nesting.
 \label{fig:tJoin}
 \end{figure}
 
+When we \emph{fmap} a function |a->Temoral b| over a |Temporal a| we
+would get a |Temporal Temporal b|. To implement a Monad, we must
+flatten this to a plain |Temporal b|
+
 In Figure \ref{fig:tJoin} you see a |Temporal Temporal|. The inner
 changes are connected by the black arrows, and the outer changes are
-connected by the red arrows. The task of |tJoin| is to construct the
-blue connections, which will be a plain |Temporal|.
+connected by the red arrows. We need to construct the blue
+connections, which will be a plain |Temporal|.
 
-The blue path must obey the following rules
-\begin{itemize}
-\item it starts with the very first (upper left) cell
-\item it ends with the very last (lower right) cell
-\item the times of the connected cells are ascending
-\item the time of each cell lies before the time of the next outer change (if any)
-\item all possible cells are included (no cell is needlessly omitted)
-\item no times or values are altered
-\end{itemize}
+\begin{code}
 
-I did not manage to implement a Monad instance in a readable
-way. This, and the fact I wouldnÄt know what to do with it, led be to
-believe that a Monad instance is not strictly required.
+tBind :: (Temporal a) -> (a -> Temporal b) -> Temporal b
+tBind (Temporal xs) f
+        | null xs        = error "empty Temporal"
+        | null (tail xs) = lates
+        | otherwise      = (tTakeWhile (< tt xs) lates) `tAppend` ((Temporal $ tail xs) >>= f)
+        where
+            lates = switchAt (th xs) ( f (vh xs))
+            tAppend (Temporal as) (Temporal bs) = Temporal (as ++ bs)
+            switchAt t (Temporal as)
+                    | null (tail as)            = Temporal (tot as)
+                    | between t (th as) (tt as) = Temporal (tot as)
+                    | otherwise                 = switchAt t (Temporal (tail as))
+                    where
+                        tot ((ty,vy):xs) = ((max t ty, vy):xs)
+            vh = snd . head        -- value head
+            th = fst . head        -- time head
+            tt = fst . head . tail -- time tail
+            between t x y = t >= x && t < y
 
+
+instance Monad Temporal
+         where return x = temporal x []
+               m >>= f  = tBind m f
+\end{code}
 
 \subsection{Other Operations}
 
@@ -312,58 +319,21 @@ listLift  :: ([(Time, a1)] -> [(Time, a)]) -> Temporal a1 -> Temporal a
 listLift f tpr = Temporal $ f $ toList tpr
 \end{code}
 
-We can discard the initial part of a Temporal, such that the last
-discarded values becomes the value of |DPast|.
 
 \begin{code}
 
 toList :: Temporal a -> [(Time, a)]
 toList (Temporal xs) = xs
 
-dpast :: Temporal a -> Temporal a
-dpast (Temporal []) = error "empty Temporal"
-dpast (Temporal xs) = temporal (snd $ head xs) (tail xs)
-
-tDropWhile :: (Time->Bool) -> Temporal a -> Temporal a
-tDropWhile p  = dpast . (listLift (dropWhile (p.fst)))
+-- forces the first value to occur at |DPast|
+fromList :: [(Time,a)] -> Temporal a
+fromList ((t,v):xs) = temporal v xs
 
 tTakeWhile :: (Time->Bool) -> Temporal a -> Temporal a
-tTakeWhile p = dpast . (listLift (takeWhile (p.fst)))
+tTakeWhile p = listLift (takeWhile (p.fst))
 
 tNub :: Eq a => Temporal a -> Temporal a
-tNub = listLift (nubBy (on (==) snd))
-\end{code}
-
-\subsection{Other Operations}
-
-We can discard the initial part of a Temporal, such that the last
-discarded values becomes the value of |DPast|.
-
-\begin{code}
-switchAt :: Time -> (Temporal a) -> (Temporal a)
-switchAt t (Temporal []) = (Temporal [])
-switchAt t (Temporal xs)
-  | null (tail xs)    = Temporal (tot xs)
-  | th <= t && tt > t = Temporal (tot xs)
-  | otherwise         = switchAt t (Temporal (tail xs))
-  where
-    tot ((ty,vy):xs) = ((max t ty, vy):xs)
-    th = (fst . head) xs
-    tt = (fst . head . tail) xs
-
-(Temporal ((t1,v1):[]))         `tBind` f =                      switchAt t1 (f v1)
-(Temporal ((t1,v1):(t2,v2):xs)) `tBind` f = ((tTakeWhile (< t2) . (switchAt t1)) (f v1)) `tAppend` ((Temporal ((t2,v2):xs)) >>= f)
-
-tAppend (Temporal xs) (Temporal ys) = Temporal (xs ++ ys)
-
-instance Monad Temporal
-         where return x = temporal x []
-               m >>= f  = m `tBind` f
-
-
-ex10 = Temporal [(DPast,3)]
-ex11 = Temporal [(DPast,2),(T 1,5),(T 3,3)]
-
+tNub = listLift (nubBy ((==) `on` snd))
 \end{code}
 
 \end{document}
