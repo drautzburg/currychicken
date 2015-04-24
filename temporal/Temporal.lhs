@@ -18,7 +18,7 @@
 \usepackage{colortbl}	
 \usepackage{pgf}
 \usepackage[framemethod=tikz]{mdframed}
-\newmdenv[frametitle=Example,backgroundcolor=gray!05,roundcorner=2pt]{run}
+\newmdenv[frametitle=Example,skipabove=1em,backgroundcolor=gray!05,roundcorner=2pt]{run}
 \renewcommand{\texfamily}{\fontfamily{cmtex}\selectfont\small}
 
 
@@ -176,6 +176,48 @@ exNat = temporal 0 [(T i, i) | i <- [1..]]
 \end{code}
 \end{run}
 
+\subsubsection{List operations}
+
+Since Temporals are essentially Lists we can lift any List operation
+to operate of a Temporal.
+
+\begin{code}
+listLift  :: ([(Time, a1)] -> [(Time, a)]) -> Temporal a1 -> Temporal a
+listLift f tpr = Temporal $ f $ toList tpr
+\end{code}
+
+
+\begin{code}
+
+toList :: Temporal a -> [(Time, a)]
+toList (Temporal xs) = xs
+
+-- forces the first value to occur at |DPast|
+fromList :: [(Time,a)] -> Temporal a
+fromList ((t,v):xs) = temporal v xs
+
+tTakeWhile :: (Time->Bool) -> Temporal a -> Temporal a
+tTakeWhile p = listLift (takeWhile (p.fst))
+
+tNub :: Eq a => Temporal a -> Temporal a
+tNub = listLift (nubBy ((==) `on` snd))
+\end{code}
+
+
+\subsubsection{Accessing}
+\begin{code}
+
+tVh :: Temporal a -> a
+tVh = snd . head . toList        -- value head
+
+tTt, tTh :: Temporal a -> Time
+tTt = fst . head . tail . toList -- time tail
+tTh = fst . head . toList        -- time head
+
+tTail = listLift tail
+tNull = null . toList
+
+\end{code}
 
 \subsubsection{Foldable}
 
@@ -197,7 +239,6 @@ instance F.Foldable Temporal where
 |*Main> F.foldr (*) 1 ex1|\\
   \eval{F.foldr (*) 1 ex1}
 \end{run}
-
 
 \subsubsection{Functor}
 
@@ -285,56 +326,28 @@ connections, which will be a plain |Temporal|.
 \begin{code}
 
 tBind :: (Temporal a) -> (a -> Temporal b) -> Temporal b
-tBind (Temporal xs) f
-        | null xs        = error "empty Temporal"
-        | null (tail xs) = lates
-        | otherwise      = (tTakeWhile (< tt xs) lates) `tAppend` ((Temporal $ tail xs) >>= f)
+tBind tpr f
+        | tNull tpr         = error "empty Temporal"
+        | tNull (tTail tpr) = lates
+        | otherwise         = (tTakeWhile (< tTt tpr) lates)
+                              `tAppend`
+                              (tTail tpr >>= f)
         where
-            lates = switchAt (th xs) ( f (vh xs))
+            lates = switchAt (tTh tpr) ( f (tVh tpr))
             tAppend (Temporal as) (Temporal bs) = Temporal (as ++ bs)
-            switchAt t (Temporal as)
-                    | null (tail as)            = Temporal (tot as)
-                    | between t (th as) (tt as) = Temporal (tot as)
-                    | otherwise                 = switchAt t (Temporal (tail as))
+            switchAt t tpx
+                    | tNull (tTail tpx)             = Temporal (tot tpx)
+                    | between t (tTh tpx) (tTt tpx) = Temporal (tot tpx)
+                    | otherwise                     = switchAt t (tTail tpx)
                     where
-                        tot ((ty,vy):xs) = ((max t ty, vy):xs)
-            vh = snd . head        -- value head
-            th = fst . head        -- time head
-            tt = fst . head . tail -- time tail
-            between t x y = t >= x && t < y
-
+                        tot (Temporal ((ty,vy):xs)) = ((max t ty, vy):xs)
+                        between t x y               = t >= x && t < y
 
 instance Monad Temporal
          where return x = temporal x []
                m >>= f  = tBind m f
 \end{code}
 
-\subsection{Other Operations}
-
-Since Temporals are essentially Lists we can lift any List operation
-to operate of a Temporal.
-
-\begin{code}
-listLift  :: ([(Time, a1)] -> [(Time, a)]) -> Temporal a1 -> Temporal a
-listLift f tpr = Temporal $ f $ toList tpr
-\end{code}
-
-
-\begin{code}
-
-toList :: Temporal a -> [(Time, a)]
-toList (Temporal xs) = xs
-
--- forces the first value to occur at |DPast|
-fromList :: [(Time,a)] -> Temporal a
-fromList ((t,v):xs) = temporal v xs
-
-tTakeWhile :: (Time->Bool) -> Temporal a -> Temporal a
-tTakeWhile p = listLift (takeWhile (p.fst))
-
-tNub :: Eq a => Temporal a -> Temporal a
-tNub = listLift (nubBy ((==) `on` snd))
-\end{code}
 
 \end{document}
 
