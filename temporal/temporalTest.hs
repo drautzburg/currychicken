@@ -8,12 +8,13 @@ import qualified Data.Foldable as F
 ------------------------------------------------------------
 -- Temporal
 ------------------------------------------------------------
+-- sample (arbitrary :: Gen Time)
 
 instance Arbitrary Time
         where
             arbitrary= do
                 t <- arbitrary
-                return (T t)
+                frequency [(1, return DPast), (10, return $ T t)]
 
 
 instance (Arbitrary a, Eq a, Ord a) => Arbitrary (Temporal a)
@@ -21,7 +22,7 @@ instance (Arbitrary a, Eq a, Ord a) => Arbitrary (Temporal a)
             arbitrary = do
                 ts <- orderedList
                 (NonEmpty vs) <- arbitrary
-                return $ Temporal (zip (DPast:(nub ts)) vs)
+                return $ Temporal (zip (nub (DPast:ts)) vs)
 
 prop_foldable :: (Temporal Int) -> Bool
 prop_foldable tpr = F.foldr (*) 0 tpr == 0
@@ -55,8 +56,8 @@ shortCheck name prop = do
   quickCheckWith stdArgs { maxSuccess = 20} prop
 
 
-
-testTemporal = do
+main :: IO()
+main = do
     putStrLn "\nTesting Temporal"
     shortCheck "fold" prop_foldable
     shortCheck "app1"prop_applicative1 
@@ -65,10 +66,4 @@ testTemporal = do
     shortCheck "rtid" prop_rightid
     shortCheck "ltid" prop_leftid
     shortCheck "bind" prop_bind
-
-
-
-main :: IO()
-main = do
-    testTemporal
 

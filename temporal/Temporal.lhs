@@ -127,7 +127,14 @@ Thus we get all operations which rely on comparing times for free.
 
 \end{run}
 
+We can use arithmetic operations on |Time|
 
+\begin{code}
+type DT = Integer
+add :: DT -> Time -> Time
+add _ DPast  = DPast
+add dt (T t) = T (t + dt)
+\end{code}
 
 \subsection{Temporal}
 
@@ -165,14 +172,14 @@ temporal def chs = Temporal $ (DPast, def) : chs
 
 \begin{run} 
 
-We chose two examples, where the value at |DPast| is 1 or 2 and the
-value at changes are always equal to the time, so they are easy to
-remember.
+We chose two examples |ex1| and |ex2|, where the value at |DPast| is 1
+or 2 and the value at changes are always equal to the time, so they
+are easy to remember. 
 
 \begin{code}
+ex1, ex2 :: Temporal Int
 ex1   = temporal 1 [(T 3,3), (T 7, 7)]
-ex2   = temporal 2 [(T 5,5), (T 9, 0)]
-exNat = temporal 0 [(T i, i) | i <- [1..]]
+ex2   = temporal 2 [(T 5,5), (T 9, 9)]
 \end{code}
 \end{run}
 
@@ -182,13 +189,6 @@ Since Temporals are essentially Lists we can lift any List operation
 to operate of a Temporal.
 
 \begin{code}
-listLift  :: ([(Time, a1)] -> [(Time, a)]) -> Temporal a1 -> Temporal a
-listLift f tpr = Temporal $ f $ toList tpr
-\end{code}
-
-
-\begin{code}
-
 toList :: Temporal a -> [(Time, a)]
 toList (Temporal xs) = xs
 
@@ -196,11 +196,23 @@ toList (Temporal xs) = xs
 fromList :: [(Time,a)] -> Temporal a
 fromList ((t,v):xs) = temporal v xs
 
+listLift  :: ([(Time, a1)] -> [(Time, a)]) -> Temporal a1 -> Temporal a
+listLift f (Temporal chs) = Temporal $ f chs
+
 tTakeWhile :: (Time->Bool) -> Temporal a -> Temporal a
 tTakeWhile p = listLift (takeWhile (p.fst))
 
+tUntil :: Time -> Temporal a -> Temporal a
+tUntil t = tTakeWhile (< t)
+
+
 tNub :: Eq a => Temporal a -> Temporal a
-tNub = listLift (nubBy ((==) `on` snd))
+tNub  =  fromList . f . toList 
+        where
+            f [] = []
+            f (x:xs) = x : f (dropWhile (eq x) xs)
+            eq = (==) `on` snd
+
 \end{code}
 
 
@@ -214,7 +226,6 @@ tTt, tTh :: Temporal a -> Time
 tTt = fst . head . tail . toList -- time tail
 tTh = fst . head . toList        -- time head
 
-tTail = listLift tail
 tNull = null . toList
 
 \end{code}
@@ -324,17 +335,17 @@ connected by the red arrows. We need to construct the blue
 connections, which will be a plain |Temporal|.
 
 \begin{code}
-
 tBind :: (Temporal a) -> (a -> Temporal b) -> Temporal b
 tBind tpr f
         | tNull tpr         = error "empty Temporal"
         | tNull (tTail tpr) = lates
-        | otherwise         = (tTakeWhile (< tTt tpr) lates)
-                              `tAppend`
-                              (tTail tpr >>= f)
+        | otherwise         = let hd = (tUntil (tTt tpr) lates)
+                              in hd `tAppend` (tTail tpr `tBind` f)
+
         where
             lates = switchAt (tTh tpr) ( f (tVh tpr))
-            tAppend (Temporal as) (Temporal bs) = Temporal (as ++ bs)
+            tTail = listLift tail
+            tAppend as bs = Temporal $ toList as ++ toList bs
             switchAt t tpx
                     | tNull (tTail tpx)             = Temporal (tot tpx)
                     | between t (tTh tpx) (tTt tpx) = Temporal (tot tpx)
@@ -346,6 +357,74 @@ tBind tpr f
 instance Monad Temporal
          where return x = temporal x []
                m >>= f  = tBind m f
+\end{code}
+
+\subsubsection{Performance}
+
+To get a feel about the performance, we "multilply" a very large
+Temporal with one, that drops to zero. We expect that all result
+values are zero after a certain point in time.
+
+
+\begin{run}
+\begin{code}
+ex0   = temporal 2 [(T 3,5), (T 4, 0)]
+exNat = temporal 0 [(T i, i) | i <- [1..100000]]
+\end{code}
+
+|*Main> timeIt $ putStrLn $ show $ tNub $ (*) <$> exNat <*> ex0|\\
+  \eval{timeIt $ putStrLn $ show $ tNub $ (*) <$> exNat <*> ex0}
+
+\end{run}
+
+\subsection{Applications}
+\subsubsection{Periodic Temporals}
+
+It would be quite nice to specify a Temporal which shows some periodic
+behavior. We must however, ask ourselves what happens when we repeat a
+|Temporal| which takes longer than the time between repetitions. What
+if we repeat the same song every minute, but the song takes three
+minutes? Certainly we cannot simply delay and repeat the Changes.
+
+Luckily |join| already takes care of this. All we need to do is
+create a |Temporal Temporal| where the outer Temporal stands for the
+repetitions and its Changes are the original Temporal, repeatedly
+scheduled for a certain delay.
+
+Let's first start with repeating Temporals at specific time-offsets,
+which are teken from an ordered List. If that list is empty, the
+original Temporal will be returned unchanged. 
+
+
+\begin{code}
+tDelayBy :: DT -> Temporal a -> Temporal a
+tDelayBy dt = listLift (map delay)
+        where
+            delay (tx,vx) = (add dt tx, vx)
+
+--tRepeat :: [DT] -> Temporal a -> Temporal a
+--tRepeat times tpr =  join $ Temporal $ (DPast, tpr) : (map sched times)
+--        where
+--            sched tx = (T tx, tDelayBy tx tpr)
+
+--tR :: [DT] -> Temporal a -> Temporal a
+tR times tpr =   (DPast, tpr) : (map sched times)
+        where
+            sched tx = (T tx, tDelayBy tx tpr)
+
+\end{code}
+
+If we want to repeat at regular time intervals, we do it like this:
+
+\begin{code}
+-- tCycle :: DT -> Temporal a -> Temporal a
+-- tCycle t = tRepeat [t, 2*t ..]
+
+
+--ex10 :: Temporal Int
+ex10 = show $ tUntil (T 5) $ outer `tBind` \_ -> ex1 :: Temporal Int
+        where
+            outer = fromList [(T (fromIntegral t), t)| t <- [5,10 ..]]
 \end{code}
 
 
