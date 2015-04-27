@@ -334,6 +334,7 @@ changes are connected by the black arrows, and the outer changes are
 connected by the red arrows. We need to construct the blue
 connections, which will be a plain |Temporal|.
 
+\needspace{15em}
 \begin{code}
 tBind :: (Temporal a) -> (a -> Temporal b) -> Temporal b
 tBind tpr f
@@ -372,8 +373,8 @@ ex0   = temporal 2 [(T 3,5), (T 4, 0)]
 exNat = temporal 0 [(T i, i) | i <- [1..100000]]
 \end{code}
 
-|*Main> timeIt $ putStrLn $ show $ tNub $ (*) <$> exNat <*> ex0|\\
-  \eval{timeIt $ putStrLn $ show $ tNub $ (*) <$> exNat <*> ex0}
+|*Main> bench $ tNub $ (*) <$> exNat <*> ex0|\\
+  \eval{bench $ tNub $ (*) <$> exNat <*> ex0}
 
 \end{run}
 
@@ -392,7 +393,7 @@ repetitions and its Changes are the original Temporal, repeatedly
 scheduled for a certain delay.
 
 Let's first start with repeating Temporals at specific time-offsets,
-which are teken from an ordered List. If that list is empty, the
+which are taken from an ordered List. If that list is empty, the
 original Temporal will be returned unchanged. 
 
 
@@ -400,15 +401,10 @@ original Temporal will be returned unchanged.
 tDelayBy :: DT -> Temporal a -> Temporal a
 tDelayBy dt = listLift (map delay)
         where
-            delay (tx,vx) = (add dt tx, vx)
+            delay (tx,vx) = (add dt tx, vx) 
 
---tRepeat :: [DT] -> Temporal a -> Temporal a
---tRepeat times tpr =  join $ Temporal $ (DPast, tpr) : (map sched times)
---        where
---            sched tx = (T tx, tDelayBy tx tpr)
-
---tR :: [DT] -> Temporal a -> Temporal a
-tR times tpr =   (DPast, tpr) : (map sched times)
+tRepeat :: [DT] -> Temporal a -> Temporal a
+tRepeat times tpr =  join $ Temporal $ (DPast, tpr) : (map sched times)
         where
             sched tx = (T tx, tDelayBy tx tpr)
 
@@ -417,16 +413,28 @@ tR times tpr =   (DPast, tpr) : (map sched times)
 If we want to repeat at regular time intervals, we do it like this:
 
 \begin{code}
--- tCycle :: DT -> Temporal a -> Temporal a
--- tCycle t = tRepeat [t, 2*t ..]
-
-
---ex10 :: Temporal Int
-ex10 = show $ tUntil (T 5) $ outer `tBind` \_ -> ex1 :: Temporal Int
-        where
-            outer = fromList [(T (fromIntegral t), t)| t <- [5,10 ..]]
+tCycle :: DT -> Temporal a -> Temporal a
+tCycle t = tRepeat [t, 2*t ..]
 \end{code}
 
+\begin{run}
+
+|ex1| was defined above as
+
+|*Main> ex1|\\
+  \eval{ex1}
+
+|*Main> tUntil (T 15) $ tCycle 5 ex1|\\
+  \eval{tUntil (T 15) $ tCycle 5 ex1}
+
+\begin{code}
+-- this one is infinite
+exNati = temporal 0 [(T i, i) | i <- [1..]]
+\end{code}
+
+|*Main> tUntil (T 7) $ tCycle 3 exNati|\\
+  \eval{tUntil (T 7) $ tCycle 3 exNati}
+\end{run}
 
 \end{document}
 
