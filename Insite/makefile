@@ -1,10 +1,10 @@
 include ../texmakefile
 
 prof:
-	ghc -O2 -prof -auto-all -caf-all -fforce-recomp example.hs -rtsopts
-	example +RTS -hc -p
-	hp2ps -e8in example.hp	
-	okular example.ps &
+	ghc -O2 -prof -auto-all -caf-all -fforce-recomp des-example.hs -rtsopts
+	des-example +RTS -hc -p
+	hp2ps -e8in des-example.hp	
+	okular des-example.ps &
 
 
 examplerun:

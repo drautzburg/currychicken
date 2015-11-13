@@ -61,6 +61,12 @@ import Prelude hiding (log)
 -- | A point in time
 type Instant = Double
 
+-- | Difference between two 'Instant's
+type Interval = Double
+
+-- | Infinitly long 'Interval' or distant future
+inf = 1/0
+
 -- | Something which is associated with an 'Instant'
 type Timed a = (Instant, a)
 
