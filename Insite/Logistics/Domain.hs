@@ -13,6 +13,7 @@ The data which is altered by the Simulation.
 module Logistics.Domain where
 
 import Des
+import Domain.Port
 import qualified Data.Map as M
 import Control.Monad.State.Strict
 import Misc.Lens
@@ -21,6 +22,34 @@ import Misc.Lens
 type Id = Int
 -- | A DB whose elements can be looked up by an 'Id'
 type IndexedDb a = M.Map Id a
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+-- * System
+
+-- | The State of the Simulation at any point in time
+data System = Sys {
+            processes :: ! (IndexedDb Process),
+            items     :: ! (IndexedDb Item)
+} deriving Show
+
+-- | A 'Lens' which allows operations on 'processes' within 'System'.
+--
+-- Example usage: update Process with Id=1
+--
+-- > foo = let upd p = p {sources=[]}
+-- >       in act onPrcDb $ M.adjust upd 1
+onPrcDb :: Lens (IndexedDb Process) System
+onPrcDb (Sys ps is) = (ps, \p -> Sys p is)
+
+-- | See 'insertPrc' for example usage
+onPrcDbSequence :: Lens (Int, IndexedDb Process) (Int, System)
+onPrcDbSequence (ix, Sys prcs itms) = ((ix, prcs), \(ix',prcs') -> (ix', Sys prcs' itms))
+
+-- | See 'insertItm' for example usage
+onItmDbSequence :: Lens (Int, IndexedDb Item) (Int, System)
+onItmDbSequence (ix, Sys prcs itms) = ((ix, itms), \(ix',itms') -> (ix', Sys prcs itms'))
+
+
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- ** Item

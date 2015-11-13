@@ -29,17 +29,10 @@ Library
   Build-Depends:     base >= 3 && < 5,
                      heap ,
                      mtl,
-                     containers
+                     containers,
+                     timeit
   Exposed-Modules:
-        Simulation
-        Event
-        Domain.Location
-        Domain.Port
-        Domain.Item
-        Domain.Process
-        Domain.System
-        Misc.Lens
-        Misc.Time
+        Des
 
   Other-Modules:
   GHC-Options:       -Wall -fwarn-tabs

@@ -27,7 +27,7 @@ passed to the simulation. It consists of
 
     * A Domain, which repensts the state of the system we're simulating. 
 
-    * An event-queue 'EventQu'. 
+    * An Event-queue 'EventQu'. 
 
 and
 
@@ -41,10 +41,10 @@ and
     * An exit condition 'ExitP', which returns true when the simulation shall end.
 
 
-The __Performance__ of the simulation is determined by the performance of
-the 'Logger' and the 'Handler' (assuming the 'ExitP' is reasonably
-fast). With a very simple handler and logger, 'runSim' can do one
-million steps in less than 0.2 seconds.
+The __Performance__ of the simulation is determined by the performance
+of the 'Logger' and the 'Handler' (assuming the 'ExitP' is reasonably
+fast). With a very simple handler and logger, 'runSim' can consume and
+create one million Events in less than 0.2 seconds.
 
 The __Size__ of this module is 29 lines of code (without comments and blank lines)
 
@@ -70,7 +70,7 @@ type SimState evt dom log = (log, dom, EventQu evt)
 
 
 -- | The EventQu holds Events along with their 'Instant's. The type of
--- the events themselves is not relevant for the simulation. However,
+-- the Events themselves is not relevant for the simulation. However,
 -- the 'Logger', the 'Handler' and the 'ExitP' are specific about the
 -- Events they accept as input.
 type EventQu evt = H.MinHeap (Timed evt)
@@ -82,7 +82,7 @@ type SimBehaviour evt dom log = (Logger evt dom log, Handler evt dom,ExitP evt d
 
 
 -- | A Logger takes an Event with its 'Instant' plus the Domain in
--- the state /after/ the event was handled. It produces 
+-- the state /after/ the Event was handled. It produces 
 -- 
 -- * one or more log entries. New log entries are /prepended/, so the
 -- /first/ log-entry is the one that was produced /last/.
@@ -99,7 +99,7 @@ newtype Logger evt dom log = Lgr {runLogger :: Timed evt -> dom -> (log, Logger 
 
 -- | A Handler takes an Event and a current Domain and produces 
 --
--- * A new 'EventQu' which hold events it schedules itself. 
+-- * A new 'EventQu' which hold Events it schedules itself. 
 -- * a new Domain whose state is possibly altered, 
 -- * a new version of itself. The latter is required for Handlers
 -- which e.g. limit throughput. Once such a handler has handled an
@@ -108,7 +108,7 @@ newtype Logger evt dom log = Lgr {runLogger :: Timed evt -> dom -> (log, Logger 
 --
 -- A Handler is free to ignore an Event. In that case it returns Nothing.
 
-newtype Handler evt dom = Hdr {runHandler :: Timed evt -> dom -> Maybe (EventQu evt, dom, Handler evt dom)}
+newtype Handler evt dom = Hdr {runHandler :: Timed evt -> dom -> (EventQu evt, dom, Handler evt dom)}
 
 -- | The exit condition can respond to the 'Instant', the Event or the
 -- Domain or a combination thereof. You can however, not stop the
@@ -131,16 +131,14 @@ runSim (!lgr, !hdr, xtp) (!log,!dom,!evq)  =
         where 
             -- check for end conditions or run handler
             step = do
-                (evt, evts) <- H.view evq -- no more Events
-                toMaybe $ xtp (evt,dom)   -- exitP reached
-                case runHandler hdr evt dom of
-                    Just (evq', dom', hdr') -> 
-                            let (log',lgr') = runLogger lgr evt dom'
-                            -- append new event and new log entries
-                            in return (evq'<>evts, dom', hdr', lgr', log'<>log)
-                    Nothing -> 
-                            -- handler is not interested, just consume one event
-                            return (evts, dom, hdr, lgr, log) 
+                (evt, evts) <- H.view evq -- no more Events -> Nothing
+                if xtp (evt,dom)  then Nothing
+                else
+                        let (evq', dom', hdr') = runHandler hdr evt dom
+                            (log',lgr')        = runLogger lgr evt dom'
+                        -- append new event and new log entries
+                        in return (evq'<>evts, dom', hdr', lgr', log'<>log)
             toMaybe b = if b then Nothing else Just()
+
 
 
