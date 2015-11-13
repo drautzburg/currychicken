@@ -33,6 +33,7 @@ Library
                      timeit
   Exposed-Modules:
         Des
+        Logger
 
   Other-Modules:
   GHC-Options:       -Wall -fwarn-tabs

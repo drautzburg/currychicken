@@ -65,7 +65,8 @@ type Instant = Double
 type Interval = Double
 
 -- | Infinitly long 'Interval' or distant future
-inf = 1/0
+inf :: Double
+inf = 1/0 
 
 -- | Something which is associated with an 'Instant'
 type Timed a = (Instant, a)
@@ -144,7 +145,6 @@ runSim (!lgr, !hdr, xtp) (!log,!dom,!evq)  =
                             (log',lgr')        = runLogger lgr evt dom'
                         -- append new event and new log entries
                         in return (evq'<>evts, dom', hdr', lgr', log'<>log)
-            toMaybe b = if b then Nothing else Just()
 
 
 
