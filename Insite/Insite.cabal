@@ -30,7 +30,8 @@ Library
                      heap ,
                      mtl,
                      containers,
-                     timeit
+                     timeit,
+                     pretty-show
   Exposed-Modules:
         Des
         Logger

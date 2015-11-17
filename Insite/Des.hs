@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-|
 Module      : Des
-Description : A discrete event simulation engine
+Description : - A discrete event simulation engine
 Copyright   : (c) Martin Drautzburg, 2015
 License     : GPL-3
 Maintainer  : Martin.Drautzburg@web.de
@@ -41,12 +41,12 @@ and
     * An exit condition 'ExitP', which returns true when the simulation shall end.
 
 
-The __Performance__ of the simulation is determined by the performance
+The __performance__ of the simulation is determined by the performance
 of the 'Logger' and the 'Handler' (assuming the 'ExitP' is reasonably
 fast). With a very simple handler and logger, 'runSim' can consume and
 create one million Events in less than 0.2 seconds.
 
-The __Size__ of this module is 29 lines of code (without comments and blank lines)
+The __size__ of this module is 29 lines of code (without comments and blank lines)
 
 -}
 
@@ -91,7 +91,7 @@ type SimBehaviour evt dom log = (Logger evt dom log, Handler evt dom,ExitP evt d
 -- | A Logger takes an Event with its 'Instant' plus the Domain in
 -- the state /after/ the Event was handled. It produces 
 -- 
--- * one or more log entries. New log entries are /prepended/, so the
+-- * one or more log entries. New log entries are /prepended/, so the  xxx
 -- /first/ log-entry is the one that was produced /last/.
 -- * a new version of itself. The latter is required, so you can
 -- e.g. log at fixed time-intervals. Once the logger has produced a
@@ -101,7 +101,7 @@ type SimBehaviour evt dom log = (Logger evt dom log, Handler evt dom,ExitP evt d
 -- The type of the log is not relevant for the simulation, as long as
 -- you can prepend/append to it (it must be a monoid - see 'runSim').
 
-newtype Logger evt dom log = Lgr {runLogger :: Timed evt -> dom -> (log, Logger evt dom log)}
+data Logger evt dom log = Lgr {runLogger :: (Timed evt, dom) -> log -> (log, Logger evt dom log)}
 
 
 -- | A Handler takes an Event and a current Domain and produces 
@@ -131,7 +131,7 @@ type ExitP evt dom = (Timed evt, dom) -> Bool
 -- 'SimState'
 
 runSim :: (Ord evt, Monoid log) => SimBehaviour evt dom log -> SimState evt dom log -> SimState evt dom log
-runSim (!lgr, !hdr, xtp) (!log,!dom,!evq)  =
+runSim (lgr, hdr, xtp) (!log,!dom,!evq)  =
         case step of
             Nothing -> (log, dom, evq) -- end of simulation
             Just (newEvq, newDom, newHdr, newLgr, newLog) -> runSim (newLgr,newHdr,xtp) (newLog,newDom,newEvq)
@@ -142,9 +142,9 @@ runSim (!lgr, !hdr, xtp) (!log,!dom,!evq)  =
                 if xtp (evt,dom)  then Nothing
                 else
                         let (evq', dom', hdr') = runHandler hdr evt dom
-                            (log',lgr')        = runLogger lgr evt dom'
+                            (log',lgr')        = runLogger lgr (evt,dom') log
                         -- append new event and new log entries
-                        in return (evq'<>evts, dom', hdr', lgr', log'<>log)
+                        in return (evq'<>evts, dom', hdr', lgr', log')
 
 
 
