@@ -1,73 +1,74 @@
+-- This logger is a bit faster. The overhead is < 10usec. The normal
+-- loggers costs 1 usec, but its current design exposes the internal
+-- states of the loggers, such than runSim would need a LogState in
+-- its type.
+
 {-# LANGUAGE BangPatterns #-}
-import Data.List
-import System.TimeIt
+module Logger where
+import Control.Monad.Writer
+import Text.Printf
+import Debug.Trace
 import Text.Show.Pretty
-
-type Log = [String]
-
-data  Cnd a = Cnd {checkCnd ::  a -> (Bool, Cnd a)}
-type  Wtr a = a -> String
-type  CndWtr a = (Cnd a, Wtr a)
-
--- most of the time no Cnd changes state and all Cnd return False and
--- thus no log is written
-
-runLogger ::  a -> Log -> [CndWtr a] -> (Log, [CndWtr a])
-runLogger a l cws = foldl' f (l,[]) cws
-        where
-            f  (l',cws') (c,w) = let (b,c') = checkCnd c a
-                                     cws'' = (c',w):cws'
-                                 in if b 
-                                    then (w a : l', cws'')
-                                    else (l',       cws'')
+import System.TimeIt
 
 
-at :: Int -> Cnd Int
-at x = Cnd $ \a -> (a==x, at x)
+pp x = putStrLn $ ppShow x
 
-every :: Int -> Int -> Cnd Int
-every x dx = Cnd $ \a -> if a>=x then (True, every (a+dx) dx)
-                         else (False, every x dx)
-
-cIf :: (Int->Bool) -> Cnd Int
-cIf p = Cnd $  \x -> (p x, cIf p)
-
-cndOp :: (Bool->Bool->Bool) -> Cnd a -> Cnd a -> Cnd a
-cndOp  op c1 c2  = Cnd $ \a -> let !(b1, c1') = checkCnd c1 a
-                                   !(b2, c2') = checkCnd c2 a
-                               in (b1 `op` b2, cndOp op c1' c2')
-
-
-cndOr :: Cnd a -> Cnd a -> Cnd a
-cndOr = cndOp (||)
-
-
-cndAnd :: Cnd a -> Cnd a -> Cnd a
-cndAnd = cndOp (&&)
-
-
-ex_wtr1 :: Wtr Int
-ex_wtr1 a = "Writer ex_wtr1 saw " ++ (show a)
-
-ext_wtr2 :: Wtr Int
-ext_wtr2 a = "Writer ext_wtr2 saw " ++ (show a)
-
-ex_loggers :: [CndWtr Int]
-ex_loggers = 
-        [
-         (at 3 `cndOr` at 10000, ex_wtr1),
-         (every 100000 100000, ext_wtr2),
-         (cIf (\x -> mod x 123456 == 0) `cndAnd` at 1728384, ex_wtr1)
-        ]
-
-
-onList cws l0 xs = foldl' f (l0,cws) xs
-        where 
-            f :: (Log, [CndWtr Int]) -> Int -> (Log, [CndWtr Int])
-            f (l,cws) a = runLogger a l cws 
+data LogState a = Init | Currently a
+type Wtr a l = a -> l
 
 
 
-main = timeIt $ putStrLn $ ppShow $ fst $ onList ex_loggers [] [1..5000000]
+type Logger s a log = a -> (log, LogState s) -> (log, LogState s) 
+
+logByCall :: Monoid log => Int -> Wtr Int log -> Logger (Int,Int) Int log
+logByCall dx wtr a (l, Currently (x0,xi))  = if xi==x0
+                                             then (wtr xi <>l, Currently (x0+dx, xi+1))
+                                             else (l, Currently (x0, xi+1))
+logByCall dx wtr a (l, Init) = logByCall dx wtr a (l, Currently (0,0))
 
 
+
+
+logByPx :: Monoid log => (a->a->Bool) -> Wtr a log -> Logger (a->Bool) a log
+logByPx dp wtr a (l,(Currently p0)) = if p0 a
+                                      then (wtr a <> l, Currently (dp a))
+                                      else (l, Currently p0)
+logByPx dp wtr a (l,Init) = logByPx dp wtr a (l, Currently $ const True)
+
+
+mapLogger :: Logger s a l -> [a] -> (l,LogState s) ->  (l,LogState s)
+mapLogger wtr [] ls0 = ls0
+mapLogger wtr (x:xs) ls0 = let !ls' = wtr x ls0
+                            in mapLogger wtr xs ls'
+
+combineLogger :: Logger s1 a l -> Logger s2 a l -> Logger(s1,s2) a l
+combineLogger wtr1 wtr2 a (l, Currently (s1,s2))   = let !(l1', Currently s1') = wtr1  a (l,   Currently s1)
+                                                         !(l2', Currently s2') = wtr2  a (l1', Currently s2)
+                                                     in  (l2', Currently (s1', s2'))
+
+combineLogger lgr1 lgr2 a (l,Init)   = let !(l1', Currently s1') = lgr1  a (l,  Init)
+                                           !(l2', Currently s2') = lgr2  a (l1',Init)
+                                       in  (l2', Currently (s1', s2'))
+
+combined a (l, Currently (s1,s2,s3)) = 
+        let 
+                lgr1 = logByCall 1000000               (\i -> [printf "%d invocations" i])
+                lgr2 = logByCall 20000000              (\i -> [printf "** %d invocations" i])
+                lgr3 = logByPx (\x1-> (> x1+750000))   (\a -> [printf "Predicate x=%d" a, "with a next log"])
+                !(l1', s1') = lgr1 a (l,s1)
+                !(l2', s2') = lgr2 a (l1',s2)
+                !(l3', s3') = lgr3 a (l2',s3)
+        in (l3',Currently (s1',s2',s3'))
+
+(<+>)  = combineLogger
+
+
+main = let lgr = logByCall 1000000                   (\i -> [printf "%d invocations" i])
+                 <+> logByCall 20000000              (\i -> [printf "** %d invocations" i])
+                 <+> logByPx (\x1-> (> x1+750000))   ((\a -> [printf "Predicate x=%d" a, "with a next log"]) :: Wtr Int [String])
+       in timeIt $ pp $ fst $ mapLogger lgr [1..10000000] (["Start"], Init)
+
+
+-- a bit faster
+-- main = timeIt $ pp $ fst $ mapLogger combined [1..10000000] (["Start"], (Currently (Init,Init,Init,Init)))

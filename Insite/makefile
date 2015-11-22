@@ -6,11 +6,10 @@ heap:
 	hp2ps -c -e8in des-example.hp	
 	okular des-example.ps &
 
-thunk:
+prof:
 	ghc -O2 -prof -auto-all -caf-all -fforce-recomp des-example.hs 
-	des-example +RTS -h -RTS
-	hp2ps -c -e8in des-example.hp	
-	okular des-example.ps &
+	des-example +RTS -p -RTS
+
 
 
 examplerun:

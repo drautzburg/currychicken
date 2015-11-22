@@ -51,6 +51,7 @@ The __size__ of this module is 29 lines of code (without comments and blank line
 -}
 
 module Des where
+import Logger
 import qualified Data.Heap as H
 import Data.Monoid
 import Prelude hiding (log)
@@ -72,7 +73,7 @@ inf = 1/0
 type Timed a = (Instant, a)
 
 -- * State
--- | The ingredients which descibe the initial (and running) state of the simulation
+-- | The ingredients which describe the initial (and running) state of the simulation
 type SimState evt dom log = (log, dom, EventQu evt)
 
 
@@ -85,23 +86,17 @@ type EventQu evt = H.MinHeap (Timed evt)
 -- * Behaviour
 
 -- | The three ingredients which describe the behavior of the simulation
-type SimBehaviour evt dom log = (Logger evt dom log, Handler evt dom,ExitP evt dom )
+type SimBehaviour evt dom log = (Logger (Timed evt, dom) log, Handler evt dom,ExitP evt dom )
 
 
 -- | A Logger takes an Event with its 'Instant' plus the Domain in
--- the state /after/ the Event was handled. It produces 
--- 
--- * one or more log entries. New log entries are /prepended/, so the  xxx
--- /first/ log-entry is the one that was produced /last/.
--- * a new version of itself. The latter is required, so you can
--- e.g. log at fixed time-intervals. Once the logger has produced a
--- log entry it will not do so for a while.
---
---
--- The type of the log is not relevant for the simulation, as long as
--- you can prepend/append to it (it must be a monoid - see 'runSim').
+-- the state /before/ the Event gets handled. See "Logger" for details.
 
-data Logger evt dom log = Lgr {runLogger :: (Timed evt, dom) -> log -> (log, Logger evt dom log)}
+-- | log every dt units of time
+logEvery :: Monoid log => Double -> Wtr (Timed evt, dom) log -> Logger (Timed evt, dom) log
+logEvery dt wtr = let p0 ((t,_),_) = t >= dt
+                      nxt ((t,_),_) ((t',_),_) = t' >= t + dt
+                  in logIfStep p0 nxt wtr
 
 
 -- | A Handler takes an Event and a current Domain and produces 
@@ -141,8 +136,8 @@ runSim (lgr, hdr, xtp) (!log,!dom,!evq)  =
                 (evt, evts) <- H.view evq -- no more Events -> Nothing
                 if xtp (evt,dom)  then Nothing
                 else
-                        let (evq', dom', hdr') = runHandler hdr evt dom
-                            (log',lgr')        = runLogger lgr (evt,dom') log
+                        let (log',lgr')        = runLogger lgr (evt,dom) log
+                            (evq', !dom', hdr') = runHandler hdr evt dom
                         -- append new event and new log entries
                         in return (evq'<>evts, dom', hdr', lgr', log')
 
