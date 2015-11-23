@@ -82,6 +82,6 @@ ex_logger = mempty <> logCount 300000 ex_wtr <> mempty
 ex_main = do
     timeIt $ putStrLn $ ppShow $ testLogger ex_logger ex_inputs
 
-main = ex_main
+-- main = ex_main
 
 

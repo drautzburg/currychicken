@@ -95,8 +95,8 @@ type SimBehaviour evt dom log = (Logger (Timed evt, dom) log, Handler evt dom,Ex
 -- | log every dt units of time
 logEvery :: Monoid log => Double -> Wtr (Timed evt, dom) log -> Logger (Timed evt, dom) log
 logEvery dt wtr = let p0 ((t,_),_) = t >= dt
-                      nxt ((t,_),_) ((t',_),_) = t' >= t + dt
-                  in logIfStep p0 nxt wtr
+                      dp ((t,_),_) ((t',_),_) = t' >= t + dt
+                  in logIfP' dp p0  wtr
 
 
 -- | A Handler takes an Event and a current Domain and produces 
