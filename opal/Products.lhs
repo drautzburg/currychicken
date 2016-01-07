@@ -64,12 +64,18 @@ import Test.QuickCheck
 import Data.Maybe
 import Text.Show.Pretty
 import Control.Arrow
+import Data.String.Utils
 pp a = putStrLn $ ppShow a
+lpp a = do
+    putStrLn "\\begin{verbatim}"
+    putStrLn $ ppShow a
+    putStrLn "\\end{verbatim}"
+
 \end{code}
 %endif
 
 \section{Items}
-Mail items can be letters, parcels, trays, rollcontainers, truck and
+Mail items can be letters, parcels, trays, roll-containers, truck and
 many more. It appears like some of them are containers and others are
 \emph{atomic}. However emphasizing the distinction between containers
 and atomic items turned out to be suboptimal, primarily because this
@@ -77,9 +83,9 @@ distinction lies in the eye of the beholder and is not a true property
 of a mail item.
 
 For a parcel processing company a parcel appears like an atomic
-item. However it is certainly a container and it contains other
-items. It is just the parcel company not caring about what's inside,
-which makes it appear atomic.
+item. However it is certainly a container and it does contain other
+items. It only appears atomic, because the parcel company does not
+care about what's inside,
 
 Therefore we treat all items as containers which could potentially
 contain other items. We need an additional means of expression for
@@ -196,7 +202,11 @@ This leads to the following definition
 \begin{code}
 data  MapProduct lty = MPacked  (M.Map lty (MapProduct lty)) | 
                        MPany 
-                     deriving (Eq, Show)
+                     deriving (Eq)
+
+instance (Show a) => Show (MapProduct a) where
+        show MPany = "MPany"
+        show (MPacked map) = show $ M.toList map
 \end{code}
 
 \subsection{MapProducts are Products}
@@ -226,8 +236,8 @@ instance Product MapProduct
             sat MPany _ = True
             sat (MPacked map) (Ipacked lbl items) 
                     = case M.lookup lbl map of
-                          Nothing -> False
                           Just mp -> all (sat mp) items
+                          _       -> False
             sat (MPacked map) (Inonempty lbl)
                     = case M.lookup lbl map of
                           Just MPany -> True
@@ -236,9 +246,6 @@ instance Product MapProduct
 \end{code}
 
 \subsection{Examples}
-
-So far we have not yet defined any convenience functions for
-constructing MapProducts, so our Products look a bit verbose. 
 
 Here is an example of a MapProduct with the toplevel labels ``foo''
 and ``bar'', where ``foo'' may contain items with the labels ``foo1''
@@ -284,7 +291,9 @@ A ``foo'' with a ``foo1'' inside matches
 
 |*Main> sat ex_prod1 (Ipacked "foo" [Ipacked "foo1" []])| \\
   \eval{sat ex_prod1 (Ipacked "foo" [Ipacked "foo1" []])}
-
+\end{run}
+\needspace{24em}
+\begin{run}
 A ``foo'' with a ``bar1'' inside does not match
 
 |*Main> sat ex_prod1 (Ipacked "foo" [Ipacked "bar1" []])| \\
@@ -315,7 +324,7 @@ The arrows in those diagrams point in the direction of the Item
 flow. The transformation of Sorting Products however, runs in the
 opposite direction, i.e. the input Products are computed from the
 output products. To emphasize this, we label the input products with
-``y'', as they are the result of the transformation abd the output
+``y'', as they are the result of the transformation and the output
 products with ``x'', as they are the input to the transformation.
  
 \subsection{Intersection}
@@ -333,7 +342,7 @@ an |MPany|.
 mpIntersect mp1 MPany = mp1
 mpIntersect MPany mp2 = mp2
 mpIntersect (MPacked map1) (MPacked map2)
-                      = MPacked (M.intersectionWith mpIntersect map1 map2)
+        = MPacked (M.intersectionWith mpIntersect map1 map2)
 \end{code}
 
 \subsubsection{Examples}
@@ -348,7 +357,7 @@ ex_prod2 = let (>>) = flip ($)
             >> M.insert "foo" (
               M.empty
               >> M.insert "foo1" MPany
-              >> M.insert "foo3" MPany 
+              >> M.insert "foo3" MPany  -- $\leftarrow$
               >> MPacked
                               )
             >> MPacked
@@ -358,8 +367,27 @@ ex_prod2 = let (>>) = flip ($)
 Intersecting |ex_prod1| with |ex_prod2| indeed returns the expected result.
 \medskip
 \begin{run}
-|*Main> mpIntersect ex_prod1 ex_prod2| \\
-  \eval{mpIntersect ex_prod1 ex_prod2}
+|*Main> mpIntersect ex_prod1 ex_prod2| 
+  \perform{lpp $ mpIntersect ex_prod1 ex_prod2}
+\end{run}
+
+\subsection{Union}
+
+Union is absolutely analogous to intersection.
+
+\begin{code}
+mpUnion mp1 MPany = MPany
+mpUnion MPany mp2 = MPany
+mpUnion (MPacked map1) (MPacked map2)
+        = MPacked (M.unionWith mpUnion map1 map2)
+\end{code}
+
+\needspace{24em}
+\subsubsection{Examples}
+
+\begin{run}
+|*Main> mpUnion ex_prod1 ex_prod2| 
+  \perform{lpp $ mpUnion ex_prod1 ex_prod2}
 \end{run}
 
 
@@ -370,38 +398,44 @@ but it is handy nontheless.
 
  \begin{figure}[htb!]
 \centering
-\includegraphics[width=6cm]{ProductsRestrict.eps}
+%\includegraphics[width=6cm]{ProductsRestrict.eps}
 \caption{Restrict}
 \end{figure}
 
 \emph{Restrict} takes a predicate |lty->Bool| and removes all keys
 from the map, which do not satisfy the predicate.  \emph{Restrict}
-does not affect the condition for contained items and it cannot handle
+does not affect the conditions for contained items and it cannot handle
 |MPany|.
-
-On the other hand, it is more powerful the |mpIntersect| because a
-predicate is more powerful than a Map, where you have to specify each
-key you want included.
-
 
 \begin{code}
 mpRestrict :: (a->Bool) -> MapProduct a -> MapProduct a
 mpRestrict pred  (MPacked map) = MPacked $ M.filterWithKey f map
                                   where
                                     f k v = pred k
-
+mpRestrict _ MPany = MPany
 \end{code}
 
 \subsubsection{Examples}
 \begin{run}
-We restrict |ex_prod1| such that only the ``bar'' labeled Items are
-accepted. The next level, i.e. the contained items are not affected.
+We restrict |ex_prod1| such that only the ``bar''-labeled Items are
+accepted. The next level, i.e. the contained items is not affected.
 
-|*Main> mpRestrict (== "bar") ex_prod1| \\
-  \eval{mpRestrict (== "bar") ex_prod1}
+|*Main> mpRestrict (== "bar") ex_prod1| 
+\perform{lpp $ mpRestrict (== "bar") ex_prod1}
 \end{run}
 
+\section{Tests}
+\begin{code}
+instance (Arbitrary lty, Ord lty) => Arbitrary (MapProduct lty) where
+        arbitrary = do
+            xs  <- listOf arbitrary
+            elements [MPacked $ M.fromList (take 2 xs), MPany]
 
+-- sample (arbitrary :: Gen (MapProduct Int))
+
+prop_restrict :: String -> MapProduct String -> Bool
+prop_restrict str mp = (mpRestrict (==str) mp) == (mpIntersect mp (MPacked $ M.singleton str MPany))
+\end{code}
 
 
 %\begin{figure}[htb!]
