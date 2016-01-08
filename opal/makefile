@@ -4,7 +4,7 @@ export EMPTY_LHS
 
 opal.pdf: opal.tex items.tex monitoring.tex workorders.tex productionBatch.tex whatOpalDoes.tex \
 	  interpolating.eps  unpackComplete.eps workorderStates.eps whatOpalDoes.eps stateDependencies.eps
-	pdflatex opal.tex
+	pdflatex opal.tex 
 
 
 %.eps: %.dot
@@ -41,6 +41,7 @@ clean:
 	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
 
 
+Products.pdf: ProductsRestrict.eps ProductsMerge.eps ProductsMerge2.eps ProductsSplit.eps ProductsSplitPack.eps ProductsPack.eps ProductsUnpack.eps
 
 
 # ------------------------------------------------------------
