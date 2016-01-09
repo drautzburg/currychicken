@@ -5,20 +5,20 @@ digraph d {
 	rankdir=LR
 	subgraph port {
 		node [shape=circle, style=filled, fillcolor="#EEEEEE", fixedsize=true, width=0.4]
-		px1
-		px2
-		pc1
-		py
+		xi1
+		xi2
+		yc
+		yi
 		}
 	subgraph process {
 		node [shape=box, style=rounded]
 		S
 		P
 	}
-{rank=same; pc1 P}
-pc1->P
-py->P
+{rank=same; yc P}
+yc->P
+yi->P
 P->S
-S -> px1
-S -> px2
+S -> xi1
+S -> xi2
 }

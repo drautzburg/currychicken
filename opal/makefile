@@ -41,7 +41,8 @@ clean:
 	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
 
 
-Products.pdf: ProductsRestrict.eps ProductsMerge.eps ProductsMerge2.eps ProductsSplit.eps ProductsSplitPack.eps ProductsPack.eps ProductsUnpack.eps
+Products.pdf: ProductsRestrict.eps ProductsMerge.eps ProductsMerge2.eps ProductsSplit.eps ProductsSplitPack.eps ProductsPack.eps 
+#ProductsUnpack.eps
 
 
 # ------------------------------------------------------------
