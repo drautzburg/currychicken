@@ -1,0 +1,57 @@
+digraph d {
+	node [fontname = "Arial"];
+	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
+
+	rankdir=LR
+	subgraph func {
+		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
+		add1[label="[add1]"]
+		add2[label="[add2]"]
+		rt1[label="[rt1]"]
+		dos[label="[dos]\nrc"]
+		xxx[label="[do1]"]
+		do1[label="[do1]\nrc"]
+		do2[label="[do2]\nrc"]
+
+	}
+	subgraph nest {
+		node [shape=circle, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
+		truck [label=Tr]
+		do1rcs[label="do1"]
+		rt1Tray [label="rt1"]
+		rt2Tray [label="rt2"]
+	}
+
+	subgraph process {
+		node [shape=box, style=rounded]
+		splitToAddr[label=S]
+		splitToRoute[label=S]
+		splitToDo[label=S]
+		unpackTruckToRc[label=U]
+		unpackRcToTray[label=U]
+		unpackTrayToLetter[label=U]
+	}
+	subgraph invis {
+		node [shape=box, style=rounded, label="..."]
+		routeUnpackN
+		dots1
+	}
+	splitToAddr -> add1
+	splitToAddr -> add2
+	rt1 -> splitToAddr
+
+	unpackTrayToLetter -> rt1 [label="letter"]
+	rt1Tray -> unpackTrayToLetter [label="tray"]
+	splitToRoute -> rt1Tray
+	splitToRoute -> rt2Tray -> routeUnpackN
+
+	xxx -> splitToRoute
+	unpackRcToTray -> xxx [label="tray"]
+	do1rcs -> unpackRcToTray [label="rc"]
+
+	truck -> unpackTruckToRc [label="truck"]
+	unpackTruckToRc -> dos
+	dos -> splitToDo
+	splitToDo -> do1
+	splitToDo -> do2 -> dots1
+}
