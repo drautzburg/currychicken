@@ -141,7 +141,8 @@ possible to compare labels for equality (|Eq|) and to order them
 
 \begin{code}
 class Product prod where
-        accepts :: (Eq lty, Ord lty) => prod lty -> (Item lty) -> Bool
+        accepts :: (Eq lty, Ord lty) => 
+                   prod lty -> Item lty -> Bool
 
 \end{code}
 
@@ -601,6 +602,12 @@ unpack lbl pls = Pnest lbl pls
 
 \section{Larger examples}
 
+ \begin{figure}[htb!]
+\centering
+\includegraphics[width=12cm]{ProductsExRec.eps}
+\caption{Pack}
+\end{figure}
+
 \begin{code}
 leaf :: lty -> Pfunc lty
 leaf lbl = Pfunc[Pnest lbl PfAny]
@@ -658,7 +665,6 @@ ex_truck =
            sDof reg dof  = pack (sRcs reg !! dof)          :: (Ex_lbl, Pfunc Ex_lbl)
 
            -- 
-           -- stray route  = mergeAll (snd $ sDof route) :: [(Pnest Ex_lbl)]
 
            in (sRcs 0) -- (stray 0) !! 0
 \end{code}
