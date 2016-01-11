@@ -1,0 +1,20 @@
+digraph d {
+	node [fontname = "Arial"];
+	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
+
+	rankdir=LR
+	subgraph port {
+		node [shape=circle, style=filled, fillcolor="#EEEEEE", fixedsize=true, width=0.4]
+		xi
+		xc
+		yi
+		}
+	subgraph process {
+		node [shape=box, style=rounded]
+		U
+	}
+{rank=same; xc U}
+yi -> U
+U -> xi
+U -> xc
+}
