@@ -3,7 +3,7 @@ digraph d {
 	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
 
 	rankdir=LR
-	subgraph func {
+	subgraph list {
 		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
 		add1[label="[add1]"]
 		add2[label="[add2]"]

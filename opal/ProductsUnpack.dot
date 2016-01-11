@@ -3,11 +3,17 @@ digraph d {
 	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
 
 	rankdir=LR
-	subgraph port {
-		node [shape=circle, style=filled, fillcolor="#EEEEEE", fixedsize=true, width=0.4]
-		xi
-		xc
+	subgraph list {
+		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
+		xi [label="[xi]"]
+		}
+	subgraph nest {
+		node [shape=circle, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
 		yi
+		}		
+	subgraph others {
+		node [shape=circle, style=filled, fillcolor="#DDDDDD", fixedsize=true, width=0.6]
+		xc
 		}
 	subgraph process {
 		node [shape=box, style=rounded]
