@@ -287,7 +287,7 @@ label, so the Split Process has no way of distinguishing those
 containers from each other. 
 
 Likewise the |Pack| process has no way of figuring out the required
-container label |yc|, because the |Split| process accepts a |Pfunc|,
+container label |yc|, because the |Split| process accepts a |Plist|,
 i.e. a union of things, with multiple possible container labels.
 
 \section{Product Representations}
@@ -331,73 +331,73 @@ other.
 This leads to the following:
 
 \begin{code}
-data Pfunc lty    = Pfunc [Pnest lty] | PfAny | PfNone
+data Plist lty    = Plist [Pnest lty] | PlAny | PlNone
                   deriving (Eq, Ord, Show)
-data Pnest lty   = Pnest lty (Pfunc lty)
+data Pnest lty   = Pnest lty (Plist lty)
                   deriving (Eq, Ord, Show)
 \end{code}
 
-A |Pfunc| is basically just a list of |Pnests|, with the two
-additional constructors |PfAny| and |PfNone|, which match anything or
-nothing respectively.
+A |Plist| is basically just a list of |Pnests|, with the two
+additional constructors |PlAny| and |PlNone|\footnote{is PlNone needed
+  at all?}, which match anything or nothing respectively.
 
 A |Pnest| is defined by a container label of type |lty| and the
-possible content of the container, which is defined as a |Pfunc|.
+possible content of the container, which is defined as a |Plist|.
 
 Note that
 \begin{itemize}
-\item A |Pfunc| (or |PfAny| or |PfNone|) is always followed by a |Pnest| and vice versa.
-\item Expect to always find a |PfAny| or an empty list |[]| at the end.
+\item A |Plist| (or |PlAny| or |PlNone|) is always followed by a |Pnest| and vice versa.
+\item Expect to always find a |PlAny| or an empty list |[]| at the end.
 \end{itemize}
 
 A |Product| is then a union-type of these two parts
 \begin{code}
-data ProductRep lty = FuncRep (Pfunc lty) | 
+data ProductRep lty = Listrep (Plist lty) | 
                       NestRep (Pnest lty)
 \end{code}
 
 
-Let's define a |Pfunc| with toplevel Labels "foo" and "bar", where
+Let's define a |Plist| with toplevel Labels "foo" and "bar", where
 "foo" may contain "foo1" and "foo2"-labeled items and "bar" may
 contain nothing at all. 
 
 \begin{code}
 ex_foo =  Pnest "foo" 
-          (Pfunc [
-            Pnest "foo1" PfAny,
-            Pnest "foo2" PfAny
+          (Plist [
+            Pnest "foo1" PlAny,
+            Pnest "foo2" PlAny
            ])
 
-ex_bar =  Pnest "bar" (Pfunc [])
+ex_bar =  Pnest "bar" (Plist [])
 
-ex_pfunc1 = Pfunc [ex_foo, ex_bar]
+ex_plist1 = Plist [ex_foo, ex_bar]
 
--- The whole Product is a |FuncRep|.
-ex_prod1 = FuncRep ex_pfunc1
+-- The whole Product is a |Listrep|.
+ex_prod1 = Listrep ex_plist1
 \end{code}
 
 \subsubsection{The Product instance}
 
 We should now be able to define a |Product| instance of
 |ProductRep|. Otherwise |ProductRep| would not be a suitable
-implementation of |Product|. We begin by answering when a |Pnest| and a |Pfunc| accept an Item. 
+implementation of |Product|. We begin by answering when a |Pnest| and a |Plist| accept an Item. 
 
-A |Pfunc| accepts an Item, when it is accepted by one of its |Pnest|
+A |Plist| accepts an Item, when it is accepted by one of its |Pnest|
 elements. We test this, using a yet-to-be-defined function
-|pAccepts|. Since our accept functions take the "Product" as the first
-parameter and the Item as second, we have to flip the parameters in
-order to apply |any|. Finally there are the cases for |PfAny| and
-|PfNone| with obvious implementations.
+|pAccepts|. \footnote{Since our accept functions take the "Product" as
+  the first parameter and the Item as second, we have to flip the
+  parameters in order to apply |any|}. Finally there are the cases for
+|PlAny| and |PlNone| with obvious implementations.
 
 \begin{code}
-fAccepts :: (Ord lty) => Pfunc lty -> Item lty -> Bool
-fAccepts (Pfunc pns) item = any (flip nAccepts $ item) pns
-fAccepts PfAny _  = True
-fAccepts PfNone _ = False
+fAccepts :: (Ord lty) => Plist lty -> Item lty -> Bool
+fAccepts (Plist pns) item = any (flip nAccepts $ item) pns
+fAccepts PlAny _  = True
+fAccepts PlNone _ = False
 \end{code}
 
 The implementation for |nAccepts| works as follows: when testing an
-|Inonempty| we can only accept it, when the Product allows |PfAny| as
+|Inonempty| we can only accept it, when the Product allows |PlAny| as
 contained Items and the toplevel Labels match. If we test an
 |Inest|, then also the toplevel Labels must match, but also |all|
 contained items must be accepted. In all other cases, the Item is not
@@ -405,7 +405,7 @@ accepted.
 
 \begin{code}
 nAccepts :: (Ord lty) => Pnest lty -> Item lty -> Bool
-nAccepts (Pnest plbl PfAny) (Inonempty ilbl)  = plbl == ilbl
+nAccepts (Pnest plbl PlAny) (Inonempty ilbl)  = plbl == ilbl
 nAccepts (Pnest plbl frep) (Inest ilbl items) = plbl == ilbl && 
                                                 all (fAccepts frep) items
 nAccepts _ _  = False
@@ -418,7 +418,7 @@ Now all the |Product| instance has to do, is dispatch to either
 \begin{code}
 instance Product ProductRep where
         accepts (NestRep prod) item = nAccepts prod item
-        accepts (FuncRep prod) item = fAccepts prod item
+        accepts (Listrep prod) item = fAccepts prod item
         
 \end{code}
 
@@ -458,17 +458,17 @@ Let's now define some Set-operations.
 
 \subsubsection{Union}
 
-The union of two |Pfuncs| can be computed by buiding the union of the
+The union of two |Plists| can be computed by buiding the union of the
 underlying lists. Other than that, there are some obvious corner cases
-concerning |Pany| and |Pnone|\footnote{to DTZ: Pfunc is not a Monoid, as it required Ord.}.
+concerning |Pany| and |Pnone|\footnote{to DTZ: Plist is not a Monoid, as it required Ord.}.
 
 \begin{code}
-fUnion :: Ord a => Pfunc a -> Pfunc a -> Pfunc a
-fUnion PfAny _  = PfAny
-fUnion _ PfAny  = PfAny
-fUnion PfNone x = x
-fUnion x PfNone = x
-fUnion (Pfunc as) (Pfunc bs) = Pfunc (L.union as bs)
+fUnion :: Ord a => Plist a -> Plist a -> Plist a
+fUnion PlAny _  = PlAny
+fUnion _ PlAny  = PlAny
+fUnion PlNone x = x
+fUnion x PlNone = x
+fUnion (Plist as) (Plist bs) = Plist (L.union as bs)
 \end{code}
 
 
@@ -500,14 +500,14 @@ Intersection with oneself
 \end{run}
 
 \needspace{12em}
-One can filter a |Pfunc| with a |pNest| such that only those list
+One can filter a |Plist| with a |pNest| such that only those list
 items prevail, which are part of the |pNest|.
 
 \begin{code}
-fFilter :: (Ord a) => Pnest a -> Pfunc a -> Pfunc a
-fFilter pn PfAny = Pfunc [pn]
-fFilter _ PfNone  = PfNone
-fFilter pn (Pfunc pns) = Pfunc $ foldr f [] pns
+fFilter :: (Ord a) => Pnest a -> Plist a -> Plist a
+fFilter pn PlAny = Plist [pn]
+fFilter _ PlNone  = PlNone
+fFilter pn (Plist pns) = Plist $ foldr f [] pns
   where
     f pn' ys = case nIntersection pn pn' of
       (Just y') -> y':ys
@@ -516,26 +516,26 @@ fFilter pn (Pfunc pns) = Pfunc $ foldr f [] pns
 
 \needspace{12em}
 \begin{run} 
-We can filter our |ex_pfunc1| such that only "foo1" inside a "foo" are
+We can filter our |ex_plist1| such that only "foo1" inside a "foo" are
 allowed. No more "bar" toplevels and no more "foo2" inside a "foo" are
 accepted.
 
-|*Main> fFilter (Pnest "foo" (Pfunc [Pnest "foo1" PfAny])) ex_pfunc1|
-  \eval{fFilter (Pnest "foo" (Pfunc [Pnest "foo1" PfAny])) ex_pfunc1}
+|*Main> fFilter (Pnest "foo" (Plist [Pnest "foo1" PlAny])) ex_plist1|
+  \eval{fFilter (Pnest "foo" (Plist [Pnest "foo1" PlAny])) ex_plist1}
 \end{run}
 
 
 \needspace{12em}
-Finally the intersection of |Pfunc|. Basically we build the union of
-filtering the second |Pfunc| by every |pNest| in the first |Pfunc|.
+Finally the intersection of |Plist|. Basically we build the union of
+filtering the second |Plist| by every |pNest| in the first |Plist|.
 
 \begin{code}
-fIntersection :: Ord a => Pfunc a -> Pfunc a -> Pfunc a
-fIntersection PfAny x  = x
-fIntersection PfNone x = PfNone
-fIntersection x PfAny  = x
-fIntersection x PfNone = PfNone
-fIntersection (Pfunc pcks1) pls = foldr fUnion (Pfunc []) $ do
+fIntersection :: Ord a => Plist a -> Plist a -> Plist a
+fIntersection PlAny x  = x
+fIntersection PlNone x = PlNone
+fIntersection x PlAny  = x
+fIntersection x PlNone = PlNone
+fIntersection (Plist pcks1) pls = foldr fUnion (Plist []) $ do
   pck1 <- pcks1
   return $ fFilter pck1 pls
 \end{code}
@@ -543,64 +543,75 @@ fIntersection (Pfunc pcks1) pls = foldr fUnion (Pfunc []) $ do
 
 \subsection{Processes transforming Products}
 
-Because we destinguished between |Pfunc| and |Pnest| we can now be
+Because we destinguished between |Plist| and |Pnest| we can now be
 specific about what kind of Product each Process transforms and what
 the type of the transformed Product is. It will not be possible to
 accidently place a |Split| afer a |Pack|, because (as we shall see)
-|Split| computes a |Pfunc|, which is not transformed by a |Pack|.
+|Split| computes a |Plist|, which is not transformed by a |Pack|.
 
 
 \subsubsection{Split}
 
-|Split| takes a number of |Pfuncs|, which stand for the Products which
+|Split| takes a number of |Plists|, which stand for the Products which
 are accepted e.g. by the Stackers, and computes the Product which is
 accepted by the feeder of the machine. The computed Product is again a
-|Pfunc|.
+|Plist|.
 
 \begin{code}
-split :: (Ord a)=> [Pfunc a] -> Pfunc a
-split pxs = foldr fUnion (Pfunc []) pxs
+split :: (Ord a)=> [Plist a] -> Plist a
+split pxs = foldr fUnion (Plist []) pxs
 \end{code}
 
 \subsubsection{Merge}
 
 |Merge| does the inverse operation, but as stated earlier, it needs
 additional information to decide, what to accept at each input. This
-additional information comes in the form of a list of |Pfunc|, one
-for each input. The result of the computation is a list of |Pfunc|,
+additional information comes in the form of a list of |Plist|, one
+for each input. The result of the computation is a list of |Plist|,
 again one for each input.
 
 \begin{code}
-merge :: (Eq a, Ord a) => [Pfunc a] -> Pfunc a -> [Pfunc a]
+merge :: (Eq a, Ord a) => [Plist a] -> Plist a -> [Plist a]
 merge plss pls = map f plss
   where
     f p = fIntersection p pls
 
 -- xxx
-mergeAll :: (Eq a, Ord a) => Pfunc a ->[Pnest a]
-mergeAll (Pfunc pns) = pns
+mergeAll :: (Eq a, Ord a) => Plist a ->[Pnest a]
+mergeAll (Plist pns) = pns
 
 \end{code}
 
 \subsubsection{Pack} |Pack| takes a |Pnest| and computes the
-container label and the |Pfunc| for the items it accepts. Essentially
+container label and the |Plist| for the items it accepts. Essentially
 it removes one level of nesting.
 
 \begin{code}
-pack :: Pnest lty -> (lty, Pfunc lty)
+pack :: Pnest lty -> (lty, Plist lty)
 pack (Pnest lbl pls) = (lbl, pls)
 \end{code}
 
 \subsubsection{Unpack}
-|Unpack| takes a container label and a |Pfunc| and produces a |Pnest|.
+|Unpack| takes a container label and a |Plist| and produces a |Pnest|.
 
 
 \begin{code}
-unpack :: lty -> Pfunc lty -> Pnest lty
+unpack :: lty -> Plist lty -> Pnest lty
 unpack lbl pls = Pnest lbl pls
 \end{code}
 
 \section{Larger examples}
+
+I got stuck here. Consider a rollcontainer containing trays for 10
+routes. You unpack the rollcontainer and then split the trays into two
+parts, one containing the odd routes and the other containing the even
+routes. You cannot sensibly unpack any of the outputs, because Unpack
+assumes all containers carry the same label. Only when you split the
+trays into 10 routes you get ``pure'' trays which can be
+unpacked. Could it be that there is a special Split operation, which
+splits by label?
+
+Something is not right with our elementary functions.
 
  \begin{figure}[htb!]
 \centering
@@ -609,11 +620,11 @@ unpack lbl pls = Pnest lbl pls
 \end{figure}
 
 \begin{code}
-leaf :: lty -> Pfunc lty
-leaf lbl = Pfunc[Pnest lbl PfAny]
+leaf :: lty -> Plist lty
+leaf lbl = Plist[Pnest lbl PlAny]
 
-splitAll :: Ord a => [Pnest a] -> Pfunc a
-splitAll ns = split $ map (\np -> Pfunc [np]) ns
+splitAll :: Ord a => [Pnest a] -> Plist a
+splitAll ns = split $ map (\np -> Plist [np]) ns
 \end{code}
 
 \begin{code}
@@ -632,14 +643,14 @@ ex_truck =
            rRoute route = split [leaf("Letter", lbl "Addr" route i, mclass)
                                          | i <-[1..10],
                                                mclass <- ["Ord", "Prio"]
-                               ] :: Pfunc Ex_lbl
+                               ] :: Plist Ex_lbl
            -- Each route has its own |Pnest| tray product
            rTray route   = unpack (clbl "Tray" "Route" route) (rRoute route)      
                          :: Pnest Ex_lbl
 
            -- Each delivery office is responsible for 10 routes ...
            rDof dof    = splitAll [rTray route | route <- range 10 dof] 
-                       :: Pfunc Ex_lbl
+                       :: Plist Ex_lbl
 
            -- ... and has a dedicated rollcontainer
            rRc n     = unpack (clbl "RollContainer" "DO" n) (rDof n)  
@@ -647,7 +658,7 @@ ex_truck =
 
            -- a Region services 5 Delivery Offices ...
            rRegion reg = splitAll [rRc i | i <- range 5 reg]     
-                       :: Pfunc Ex_lbl
+                       :: Plist Ex_lbl
 
            -- ... and has a truck bringing the rollcontainers
            rTruck n  = unpack (clbl "Truck" "Region" n) (rRegion n)   :: Pnest Ex_lbl
@@ -656,13 +667,13 @@ ex_truck =
            -- Now what happens at the departure side of the truck
            ------------------------------------------------------------
            -- The truck to region n gets packed
-           sTruck n = pack(rTruck n)               :: (Ex_lbl, Pfunc Ex_lbl)
+           sTruck n = pack(rTruck n)               :: (Ex_lbl, Plist Ex_lbl)
 
            -- Each rollcontainer comes from a different source ...
            sRcs reg  = mergeAll (snd (sTruck reg))     :: [(Pnest Ex_lbl)]
 
            -- ... where they get packed
-           sDof reg dof  = pack (sRcs reg !! dof)          :: (Ex_lbl, Pfunc Ex_lbl)
+           sDof reg dof  = pack (sRcs reg !! dof)          :: (Ex_lbl, Plist Ex_lbl)
 
            -- 
 

@@ -50,7 +50,7 @@ digraph d {
 	do1rcs -> unpackRcToTray [label="rc"]
 
 	truck -> unpackTruckToRc [label="truck"]
-	unpackTruckToRc -> dos
+	unpackTruckToRc -> dos [label="rc"]
 	dos -> splitToDo
 	splitToDo -> do1
 	splitToDo -> do2 -> dots1
