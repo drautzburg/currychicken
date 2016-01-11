@@ -390,10 +390,10 @@ elements. We test this, using a yet-to-be-defined function
 |PlAny| and |PlNone| with obvious implementations.
 
 \begin{code}
-fAccepts :: (Ord lty) => Plist lty -> Item lty -> Bool
-fAccepts (Plist pns) item = any (flip nAccepts $ item) pns
-fAccepts PlAny _  = True
-fAccepts PlNone _ = False
+lAccepts :: (Ord lty) => Plist lty -> Item lty -> Bool
+lAccepts (Plist pns) item = any (flip nAccepts $ item) pns
+lAccepts PlAny _  = True
+lAccepts PlNone _ = False
 \end{code}
 
 The implementation for |nAccepts| works as follows: when testing an
@@ -407,7 +407,7 @@ accepted.
 nAccepts :: (Ord lty) => Pnest lty -> Item lty -> Bool
 nAccepts (Pnest plbl PlAny) (Inonempty ilbl)  = plbl == ilbl
 nAccepts (Pnest plbl frep) (Inest ilbl items) = plbl == ilbl && 
-                                                all (fAccepts frep) items
+                                                all (lAccepts frep) items
 nAccepts _ _  = False
 
 \end{code}
@@ -418,7 +418,7 @@ Now all the |Product| instance has to do, is dispatch to either
 \begin{code}
 instance Product ProductRep where
         accepts (NestRep prod) item = nAccepts prod item
-        accepts (Listrep prod) item = fAccepts prod item
+        accepts (Listrep prod) item = lAccepts prod item
         
 \end{code}
 
@@ -463,12 +463,12 @@ underlying lists. Other than that, there are some obvious corner cases
 concerning |Pany| and |Pnone|\footnote{to DTZ: Plist is not a Monoid, as it required Ord.}.
 
 \begin{code}
-fUnion :: Ord a => Plist a -> Plist a -> Plist a
-fUnion PlAny _  = PlAny
-fUnion _ PlAny  = PlAny
-fUnion PlNone x = x
-fUnion x PlNone = x
-fUnion (Plist as) (Plist bs) = Plist (L.union as bs)
+lUnion :: Ord a => Plist a -> Plist a -> Plist a
+lUnion PlAny _  = PlAny
+lUnion _ PlAny  = PlAny
+lUnion PlNone x = x
+lUnion x PlNone = x
+lUnion (Plist as) (Plist bs) = Plist (L.union as bs)
 \end{code}
 
 
@@ -476,12 +476,12 @@ fUnion (Plist as) (Plist bs) = Plist (L.union as bs)
 
 Two |pNests| can be intersected, which may or may not produce a
 result. Disjoint |pNests| will produce Nothing. The operation calls
-|fIntersection| to intersect the possible contained items.
+|lIntersection| to intersect the possible contained items.
 
 \begin{code}
 nIntersection :: (Ord a) => Pnest a -> Pnest a -> Maybe (Pnest a)
 nIntersection (Pnest a as) (Pnest b bs)
-  | a == b    = Just $ Pnest a (fIntersection as bs) 
+  | a == b    = Just $ Pnest a (lIntersection as bs) 
   | otherwise = Nothing
 \end{code}
 \medskip
@@ -504,10 +504,10 @@ One can filter a |Plist| with a |pNest| such that only those list
 items prevail, which are part of the |pNest|.
 
 \begin{code}
-fFilter :: (Ord a) => Pnest a -> Plist a -> Plist a
-fFilter pn PlAny = Plist [pn]
-fFilter _ PlNone  = PlNone
-fFilter pn (Plist pns) = Plist $ foldr f [] pns
+lFilter :: (Ord a) => Pnest a -> Plist a -> Plist a
+lFilter pn PlAny = Plist [pn]
+lFilter _ PlNone  = PlNone
+lFilter pn (Plist pns) = Plist $ foldr f [] pns
   where
     f pn' ys = case nIntersection pn pn' of
       (Just y') -> y':ys
@@ -520,8 +520,8 @@ We can filter our |ex_plist1| such that only "foo1" inside a "foo" are
 allowed. No more "bar" toplevels and no more "foo2" inside a "foo" are
 accepted.
 
-|*Main> fFilter (Pnest "foo" (Plist [Pnest "foo1" PlAny])) ex_plist1|
-  \eval{fFilter (Pnest "foo" (Plist [Pnest "foo1" PlAny])) ex_plist1}
+|*Main> lFilter (Pnest "foo" (Plist [Pnest "foo1" PlAny])) ex_plist1|
+  \eval{lFilter (Pnest "foo" (Plist [Pnest "foo1" PlAny])) ex_plist1}
 \end{run}
 
 
@@ -530,14 +530,14 @@ Finally the intersection of |Plist|. Basically we build the union of
 filtering the second |Plist| by every |pNest| in the first |Plist|.
 
 \begin{code}
-fIntersection :: Ord a => Plist a -> Plist a -> Plist a
-fIntersection PlAny x  = x
-fIntersection PlNone x = PlNone
-fIntersection x PlAny  = x
-fIntersection x PlNone = PlNone
-fIntersection (Plist pcks1) pls = foldr fUnion (Plist []) $ do
+lIntersection :: Ord a => Plist a -> Plist a -> Plist a
+lIntersection PlAny x  = x
+lIntersection PlNone x = PlNone
+lIntersection x PlAny  = x
+lIntersection x PlNone = PlNone
+lIntersection (Plist pcks1) pls = foldr lUnion (Plist []) $ do
   pck1 <- pcks1
-  return $ fFilter pck1 pls
+  return $ lFilter pck1 pls
 \end{code}
 
 
@@ -559,7 +559,7 @@ accepted by the feeder of the machine. The computed Product is again a
 
 \begin{code}
 split :: (Ord a)=> [Plist a] -> Plist a
-split pxs = foldr fUnion (Plist []) pxs
+split pxs = foldr lUnion (Plist []) pxs
 \end{code}
 
 \subsubsection{Merge}
@@ -574,7 +574,7 @@ again one for each input.
 merge :: (Eq a, Ord a) => [Plist a] -> Plist a -> [Plist a]
 merge plss pls = map f plss
   where
-    f p = fIntersection p pls
+    f p = lIntersection p pls
 
 -- xxx
 mergeAll :: (Eq a, Ord a) => Plist a ->[Pnest a]
