@@ -331,22 +331,21 @@ other.
 This leads to the following:
 
 \begin{code}
-data Plist lty    = Plist [Pnest lty] | PlAny | PlNone
+data Plist lty    = Plist [Pnest lty] | PlAny 
                   deriving (Eq, Ord, Show)
 data Pnest lty   = Pnest lty (Plist lty)
                   deriving (Eq, Ord, Show)
 \end{code}
 
-A |Plist| is basically just a list of |Pnests|, with the two
-additional constructors |PlAny| and |PlNone|\footnote{is PlNone needed
-  at all?}, which match anything or nothing respectively.
+A |Plist| is basically just a list of |Pnests|, with an additional
+constructors |PlAny|, which matches.
 
 A |Pnest| is defined by a container label of type |lty| and the
 possible content of the container, which is defined as a |Plist|.
 
 Note that
 \begin{itemize}
-\item A |Plist| (or |PlAny| or |PlNone|) is always followed by a |Pnest| and vice versa.
+\item A |Plist| (or |PlAny|) is always followed by a |Pnest| and vice versa.
 \item Expect to always find a |PlAny| or an empty list |[]| at the end.
 \end{itemize}
 
@@ -385,15 +384,14 @@ implementation of |Product|. We begin by answering when a |Pnest| and a |Plist| 
 A |Plist| accepts an Item, when it is accepted by one of its |Pnest|
 elements. We test this, using a yet-to-be-defined function
 |pAccepts|. \footnote{Since our accept functions take the "Product" as
-  the first parameter and the Item as second, we have to flip the
-  parameters in order to apply |any|}. Finally there are the cases for
-|PlAny| and |PlNone| with obvious implementations.
+the first parameter and the Item as second, we have to flip the
+parameters in order to apply |any|}. Finally there is |PlAny| with an
+obvious implementations.
 
 \begin{code}
 lAccepts :: (Ord lty) => Plist lty -> Item lty -> Bool
 lAccepts (Plist pns) item = any (flip nAccepts $ item) pns
 lAccepts PlAny _  = True
-lAccepts PlNone _ = False
 \end{code}
 
 The implementation for |nAccepts| works as follows: when testing an
@@ -466,8 +464,6 @@ concerning |Pany| and |Pnone|\footnote{to DTZ: Plist is not a Monoid, as it requ
 lUnion :: Ord a => Plist a -> Plist a -> Plist a
 lUnion PlAny _  = PlAny
 lUnion _ PlAny  = PlAny
-lUnion PlNone x = x
-lUnion x PlNone = x
 lUnion (Plist as) (Plist bs) = Plist (L.union as bs)
 \end{code}
 
@@ -506,7 +502,6 @@ items prevail, which are part of the |pNest|.
 \begin{code}
 lFilter :: (Ord a) => Pnest a -> Plist a -> Plist a
 lFilter pn PlAny = Plist [pn]
-lFilter _ PlNone  = PlNone
 lFilter pn (Plist pns) = Plist $ foldr f [] pns
   where
     f pn' ys = case nIntersection pn pn' of
@@ -532,9 +527,7 @@ filtering the second |Plist| by every |pNest| in the first |Plist|.
 \begin{code}
 lIntersection :: Ord a => Plist a -> Plist a -> Plist a
 lIntersection PlAny x  = x
-lIntersection PlNone x = PlNone
 lIntersection x PlAny  = x
-lIntersection x PlNone = PlNone
 lIntersection (Plist pcks1) pls = foldr lUnion (Plist []) $ do
   pck1 <- pcks1
   return $ lFilter pck1 pls
