@@ -13,14 +13,14 @@ digraph d {
 		}
 	subgraph others {
 		node [shape=circle, style=filled, fillcolor="#DDDDDD", fixedsize=true, width=0.6]
-		yc
+		ylbl
 	}				
 	subgraph process {
 		node [shape=box, style=rounded]
 		P
 	}
-	{rank=same; yc P}
-yc->P		       
+	{rank=same; ylbl P}
+ylbl->P		       
 yi->P
 P->xi
 

@@ -40,7 +40,8 @@
 \emph{Sorting Products} are a way to express what mail a process
 \emph{accepts}. In the case of lettermail, they originate at the
 reciepients' mailboxes, which accept all mail for any of the
-recipients listed on it.
+recipients listed on it and is of the correct type
+(e.g. non-registered mail).
 
 The various processess in mail processing transform Sorting Products
 and ultimately create the Products which are sold by the postal
@@ -93,12 +94,11 @@ Therefore we treat all items as containers which could potentially
 contain other items. We need an additional means of expression for
 items where we don't care (or know) what's inside.
 
-Furthermore items shall carry a label. The label stands for everything
-we know about the item. The weight of a parcel may technically not be
-printed on a label, but we treat it as part of the label
-nontheless. We make no assumption about the label format, i.e. whether
-an item is characterized by Format, Class and Destination or by
-anything else.
+Furthermore items are labeled. The label stands for everything we know
+about the item. The weight of a parcel may technically not be printed
+on a label, but we treat it as part of the label nontheless. We make
+no assumption about the label format, i.e. whether an item is
+characterized by Format, Class and Destination or by anything else.
 
 So an item with a certain type of Label |lty| is either
 \begin{description}
@@ -192,9 +192,10 @@ of Sorting Products however, runs in the opposite direction, i.e. the
 input Products are computed from the output products. To emphasize
 this, we label the input products with |y|, as they are the result of
 the transformation and the output products with |x|, as they are the
-input to the transformation. When we need to distinguish between items
-and containers, We use the letter |i| to refer to items and |c| for
-containers.
+input to the transformation.
+
+Products which refer to a single container-Label are printed in red,
+the others are printed in blue.
 
 \subsection{Pack}
 
@@ -216,49 +217,62 @@ than one container label (see |Split| below).
 
  \begin{figure}[htb!]
 \centering
-% \includegraphics[width=5cm]{ProductsUnpack.eps}
+\includegraphics[width=5cm]{ProductsUnpack.eps}
 \caption{Unpack}
 \end{figure}
 
 To compute the Product |yi|, we must know the container label |xc|. It
-cannot be computed from anything, but needs to be specieifed by the
+cannot be computed from anything, but needs to be specified by the
 planner. However once set, this information travels "left" through
 other processes, such that a potential upsream |Pack| Process will
 know what label to use.
 
-\subsection{Merge}
- \begin{figure}[htb!]
-\centering
-\includegraphics[width=5cm]{ProductsMerge.eps}
-\caption{Merge}
-\end{figure}
+\subsection{Merge and Combine}
 
-When given an output Product |xi| it is not possible to compute the
-input products |yi1| and |yi2| without further information. First you
-wouldn't know how many inputs there are and second, just accepting
-|xi| at any input would be a perfectly valid solution.
+There are two different merging processes:
+\begin{description}
+\item[merge] unites mail, which can be in containers with different
+  labels. An example is the merging of ordinary and priority mail for
+  a Postman. The Postman accepts all mail for his beat and the merge
+  process must specify that it accepts only |p1=priority| mail from
+  one input and only |p2=ordinary| mail from the other. In an
+  unconditional merge, i.e. one without the predicates |p1|, |p2| ...
+  the input product is equal to the output product.
+  \begin{figure}[htb!]
+    \centering
+    \includegraphics[width=5cm]{ProductsMerge.eps}
+    \caption{Merge}
+  \end{figure}
 
-\begin{figure}[htb!]
-\centering
-\includegraphics[width=5cm]{ProductsMerge2.eps}
-\caption{Merge as Intersections}
-\end{figure}
+\item[combine] unites mail where each input accepts only items with a
+  single label. An example is the merging of different route-trays
+  into delivery-office-rollcontainers. The number of inputs is then
+  not under the control of the planner, because the Product describing
+  the rollcontainer already ``knows'' what routes can be accepted.
+  \begin{figure}[htb!]
+    \centering
+    \includegraphics[width=5cm]{ProductsCombine.eps}
+    \caption{Combine}
+  \end{figure}
+\end{description}
 
-The least thing you need to specify, is what |p| you accept from each
-input. The resulting |yi| Products can then be computed, such
-that each item that is accepted, is accepted both by the respective
-|p| and |xi|, i.e.
-
-\begin{eqnarray}
-accepts(p_n, item) \wedge accepts(xi, item) \Leftrightarrow accepts (yi_n, item)
-\end{eqnarray}
-
-There is no guarantee, that the |yi| Products together accept all mail
-that is accepted by |xi|. However this is not a problem, because |xi|
-only tells you what you \emph{could} send to the next Process, it
-doesn't mean you have to.
 
 \subsection{Split}
+There are two different splitting processes:
+\begin{description}
+\item[split] splits mail, which can be in containers with different
+  labels. An example is the splitting of trays in a tray-sorter, or
+  any other classic sorting process. A split process may specify
+  additional predicates on its output, e.g. to restrict mail to
+  certain formats or mail classes (attribute sorting). Without such
+  predicates the process is completely determined by its output
+  products.
+\item[singulate] is the dual of |combine|. A number of containers gets
+  singluated into groups where each group carries a single label
+  only. An example is the splittig of the contents of
+  delivery-office-rollcontainers into route-trays (this is the process
+  which typically follows the unpacking of rollcontainers).
+\end{description}
 \begin{figure}[htb!]
 \centering
 \includegraphics[width=5cm]{ProductsSplit.eps}
@@ -294,7 +308,7 @@ i.e. a union of things, with multiple possible container labels.
 
 \subsection{General considerations}
 
-The typeclass |Product| defines the behavior of Products in a somewhat
+The |Product| typeclass defines the behavior of Products in a somewhat
 abstract fashion. We still need to find a suitable
 implementation. From this implementation we demand, that is must be
 possible to convert a Product into a String. Otherwise we would not be
@@ -355,6 +369,14 @@ A |Product| is then a union-type of these two parts
 data ProductRep lty = Listrep (Plist lty) | 
                       NestRep (Pnest lty)
 \end{code}
+
+This is equivalent to the following UML diagram.
+
+\begin{figure}[htb!]
+\centering
+\includegraphics[width=8cm]{ProductsUml.eps}
+\caption{Products as UML}
+\end{figure}
 
 
 Let's define a |Plist| with toplevel Labels "foo" and "bar", where
@@ -613,7 +635,7 @@ splits by label?
 
 Something is not right with our elementary functions.
 
- \begin{figure}[htb!]
+\begin{figure}[htb!]
 \centering
 \includegraphics[width=12cm]{ProductsExRec.eps}
 \caption{Pack}
