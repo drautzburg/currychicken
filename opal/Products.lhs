@@ -267,17 +267,18 @@ There are two different splitting processes:
   certain formats or mail classes (attribute sorting). Without such
   predicates the process is completely determined by its output
   products.
-\item[singulate] is the dual of |combine|. A number of containers gets
-  singluated into groups where each group carries a single label
-  only. An example is the splittig of the contents of
-  delivery-office-rollcontainers into route-trays (this is the process
-  which typically follows the unpacking of rollcontainers).
 \end{description}
 \begin{figure}[htb!]
 \centering
 \includegraphics[width=5cm]{ProductsSplit.eps}
-\caption{Merge}
+\caption{Split}
 \end{figure}
+
+\item[ind] is the dual of |combine|. A number of containers gets
+  singluated into groups where each group carries a single label
+  only. An example is the splittig of the contents of
+  delivery-office-rollcontainers into route-trays (this is the process
+  which typically follows the unpacking of rollcontainers).
 
 A Split accepts any item, which is accepted by one its outputs $xi_n$.
 
