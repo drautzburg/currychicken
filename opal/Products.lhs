@@ -350,6 +350,11 @@ data Plist lty    = Plist [Pnest lty] | PlAny
                   deriving (Eq, Ord, Show)
 data Pnest lty   = Pnest lty (Plist lty)
                   deriving (Eq, Ord, Show)
+
+class LabelPred lp where
+  match    :: lp -> lty -> Bool
+  toString :: lp -> String
+data Pitem lty = Pitem [Pitem lty]
 \end{code}
 
 A |Plist| is basically just a list of |Pnests|, with an additional
