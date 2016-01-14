@@ -17,35 +17,44 @@ data Item lty = Inest lty [Item lty] |
                 Inonempty lty
               deriving (Eq, Ord, Show)
 
+
 class Product prod where
-        accepts :: (Eq lty, Ord lty) => 
-                   prod lty -> Item lty -> Bool
+        accepts :: (Eq lty, Ord lty, Predicate p) => 
+                   prod (p lty) -> Item lty -> Bool
+
+newtype Foo p lty = Foo {acc :: lty -> Maybe (Foo p lty)}
+xxx :: (Eq lty, Predicate p) => (Foo (p lty)) -> Item lty -> Bool
+xxx (Foo acc) (Inonempty lbl) = case acc lbl of
+                                    Just p -> prAny p
 
 
+xxx (Foo acc) (Inest lbl is) = case acc lbl of
+                                   Just p -> all (xxx p) is
+
+
+------------------------------------------------------------
 data Tree a = Tree a [Tree a] | Node a
                deriving (Eq, Ord, Show)
-
-data ProductRep lty = Listrep [Tree lty] | 
-                      NestRep (Tree lty)
-                      deriving (Show)
-
+------------------------------------------------------------
+-- xxx there is no choice, why a class?
+-- xxx no need to make Item a newtype
+data ProductRep p lty = ListRep [Tree (p lty)] | 
+                        NestRep (Tree (p lty))
+                                deriving (Show)
 
 class Predicate ls where
   prSat     :: (Eq lty) => ls lty -> lty -> Bool
---  predOr    :: (Eq lty) => ls lty -> ls lty -> ls lty
---  predAnd   :: (Eq lty) => ls lty -> ls lty -> ls lty
+  prAny     :: ls lty -> Bool
   prShow    :: (Show lty) => ls lty -> String
 
-data Lpred lty = Lpred  [lty]
+-- predicate implemented as a list of labels
+data Lpred lty = Lpred  [lty] | LpAny
 
 instance Predicate Lpred where
   prSat   (Lpred as) a = a `L.elem` as
---  predOr  (Lpred as) (Lpred bs) = Lpred(L.union as bs)
---  predAnd (Lpred as) (Lpred bs) = Lpred $ L.intersect as bs
   prShow  (Lpred as) = show as
-
-predOr :: (Lpred a) -> (Lpred a) -> Lpred a
-predOr  p1 p2 = undefined
+  prAny LpAny = True
+  prAny _     = False
 
 ex_foo =  Tree "foo" 
           [
@@ -53,31 +62,32 @@ ex_foo =  Tree "foo"
             Node "foo2" 
            ]
 
-{-
-ex_bar =  Pitem "bar" []
+
+ex_bar =  Tree "bar" []
 
 ex_plist1 = [ex_foo, ex_bar]
 
 
--- The whole Product is a |Listrep|.
-ex_prod1 = Listrep ex_plist1
+-- The whole Product is a |ListRep|.
+ex_prod1 = ListRep ex_plist1
 
 
-lAccepts :: (Ord lty) => [Pitem lty] -> Item lty -> Bool
-lAccepts pns item = any (flip nAccepts $ item) pns
+lAccepts :: (Ord lty, Predicate p) => [Tree (p lty)] -> Item lty -> Bool
+lAccepts ps item = any (flip nAccepts $ item) ps
 
-nAccepts :: (Ord lty) => Pitem lty -> Item lty -> Bool
-nAccepts (Pnonempty plbl) (Inonempty ilbl)    = plbl == ilbl
-nAccepts (Pnonempty plbl) (Inest ilbl items)  = plbl == ilbl
-nAccepts (Pitem plbl frep) (Inest ilbl items) = plbl == ilbl && 
-                                                all (lAccepts frep) items
+nAccepts :: (Ord lty, Predicate p) => Tree (p lty) -> Item lty -> Bool
+nAccepts (Node p) (Inonempty ilbl)    = prSat p ilbl 
+nAccepts (Tree p ps) (Inest ilbl items) = prSat p ilbl &&
+                                          all (lAccepts ps) items
 nAccepts _ _ = False
 
-instance Product ProductRep where
-        accepts (NestRep prod) item = nAccepts prod item
-        accepts (Listrep prod) item = lAccepts prod item
+
+-- instance Product (ProductRep p) where
+--        accepts (NestRep p) item = nAccepts p item
+--        accepts (ListRep prod) item = lAccepts prod item
         
 
+{-
 
 lUnion :: Ord lty => [Pitem lty] -> [Pitem lty] -> [Pitem lty]
 lUnion = L.union 
