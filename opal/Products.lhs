@@ -58,6 +58,7 @@ This paper attempts to formalize these transformations.
 \listoffigures
 %if false
 \begin{code}
+{-# Language FlexibleInstances #-}
 import qualified Data.List as L
 import qualified Data.Set as S
 import Test.QuickCheck
@@ -108,16 +109,19 @@ item is characterized by its own label and the items contained in it.
 which is characterized by its own label only.
 \end{description}
 
-The \emph{nonempty} items are in a way the \emph{atomic} items we
-talked about earlier. There is a clear distinction between such
-nonempty/atomic items and an empty container. We known precisely
-what's inside an empty container, namely nothing.
+A nested Item is obviously a Tree, whereas a nonempty Item is a leaf
+in that Tree. A leaf stands for an Item whose content is unknown, not
+for an empty container. We known precisely what's inside an empty
+container, namely nothing.
 
 These consideration lead to the following definition:
 \begin{code}
-data Item lty = Inest lty [Item lty] | 
-                Inonempty lty
+
+data Tree a = Node a | Tree a [Tree a]
               deriving (Eq, Ord, Show)
+
+type Item lty = Tree lty
+
 \end{code}
 
 Note that the label type |lty| must be general enough to describe all
@@ -131,23 +135,25 @@ A Product tells us, whether or not it \emph{accepts} a given item.
 Hence, at its heart, a Product is a \emph{predicate}, i.e. a function
 |Item lty -> Bool|.
 
-\needspace{12em} This leads to the following typeclass (think:
-interface): There is a function |accepts| which takes a
-Product and an Item and answers either |True| or |False|.
+There a many datastructures which as suitable for implementing
+|Product| behavior. We'll come to that later and for now we just
+specifiy it as a typeclass (think:interface).
+
+\needspace{12em} This leads to the following: There is a function
+|accepts| which takes a Product and an Item and answers either |True|
+or |False|.
 
 Products and Items must agree on the label type |lty|. It must be
 possible to compare labels for equality (|Eq|) and to order them
 (|Ord|).
 
+
 \begin{code}
-class Product prod where
-        accepts :: (Eq lty, Ord lty) => 
-                   prod lty -> Item lty -> Bool
+class ProductI prod where
+        accepts :: (Predicate pre, Eq lty) => 
+                   prod (pre lty) -> Item lty -> Bool
 
 \end{code}
-
-As we shall see, this definition alone does not buy us much. We still
-have to find a concrete implementation of that typeclass/interface.
 
 \subsection{Products for Items with negative value}
 
@@ -169,7 +175,168 @@ So Sorting Products do not specify what must be included, but what
 \emph{may} be included. Or alterternatively, they specify what must
 \emph{not} be included.
 
+\subsection{Product Implementation}
+
+When you ask youself the question: "what does a sorting process
+accept?", then the answer is: "everything that that can be sorted to
+one of its outlets, excluding |NOT_IN_PLAN|. There is an implicit
+\emph{or} condition in this definition.
+
+Howevever, when you ask yourself: "what does an unpack process
+accept", then the answer is: "everything that carries a specified
+label, and whose content satisfies certain conditions".
+
+The latter emphasizes a tree-like structure, wheras the former
+emphasizes a collection of possibilities. But a Tree \emph{of what}?
+
+The thing we're nesting or aggregating is a \emph{prdicate}. A
+predicate is a function with a boolean return value. For our purposes,
+we must also ask, that the predicate can be converted to a String (in
+geneal a function cannot be converted to a String), otherwise we won't
+be able to see the results of our Product-constructions.
+
+\begin{code}
+class Predicate p where
+  prSat     :: (Eq a) => p a -> a -> Bool
+  prAnd     :: (Eq a) => p a -> p a -> Maybe (p a)
+  prOr     :: (Eq a) => p a -> p a -> p a
+  prShow    :: (Show a) => p a -> String
+\end{code}
+
+A Product is then either a Tree of predicates or a list of such
+Trees. Since constructing a List of something hardly warrants a
+separate type, we simply say, that a Product is a Tree of predicates.
+
+
+\begin{code}
+type Product p = Tree p
+\end{code}
+
+
+Using the above definition, we can indeed construct a Product, which
+again behaves like a predicate.
+
+
+\begin{code}
+\end{code}
+
+Finally we need a suitable implementation for predicate. We need a way
+to check if a labels matches certain conditions. The most simple
+implementation is just a list of possible labels.
+
+\begin{code}
+data Labels lty = Labels [lty]
+                   deriving (Show)
+
+instance Predicate Labels where
+  prSat  (Labels lbls) lbl = lbl `L.elem` lbls
+  prAnd  (Labels lbls1) (Labels lbls2) =
+    case L.intersect lbls1 lbls2 of
+      [] -> Nothing
+      ys -> Just (Labels ys)
+  prOr (Labels lbls1) (Labels lbls2) =
+          Labels (L.union lbls1 lbls2)
+  prShow = show
+ 
+\end{code}
+
+Let's define a List with toplevel Labels "foo" and "bar", where
+"foo" may contain "foo1" and "foo2"-labeled items and "bar" may
+contain nothing at all. 
+
+\begin{code}
+-- shorthands
+tree lbl xs = Tree (Labels [lbl]) xs
+node lbl = Node (Labels [lbl])
+
+ex_foo =  tree "foo" 
+          [
+            node "foo1",
+            node "foo2"
+           ]
+
+ex_bar =  node "bar" 
+
+ex_plist1 = [ex_foo, ex_bar]
+
+-- The whole Product is a |ListRep|.
+ex_prod1 = ListRep ex_plist1
+
+\end{code}
+
+\subsubsection{The Product instance}
+
+We should now be able to define a |Product| instance of
+|ProductRep|. Otherwise |ProductRep| would not be a suitable
+implementation of |ProductI|. 
+
+
+\begin{code}
+-- Is item accepted by any of the predicates in the list ?
+lAccepts :: (Predicate pre, Eq lty) => [Product (pre lty)] -> Item lty -> Bool
+lAccepts pros item = any (flip tAccepts $ item) pros
+
+
+-- Is item accepted by the single Product-Tree
+tAccepts :: (Predicate pre, Eq lty) => Product (pre lty) -> Item lty -> Bool
+tAccepts (Node preLty) (Node lbl)         = prSat preLty lbl
+tAccepts (Node preLty) (Tree lbl _ )      = prSat preLty lbl
+tAccepts (Tree preLty _) (Node lbl)       = False -- don't know what's inside
+-- all items inside must be accepted
+tAccepts (Tree preLty ps) (Tree lbl lbls) = prSat preLty lbl && all (lAccepts ps) lbls
+
+
+\end{code}
+
+Now all the |Product| instance has to do, is dispatch to either
+|pAccepts| or |tAccepts|.
+
+\begin{code}
+data ProductRep pre lty = ListRep [Product (pre lty)] | 
+                          NestRep (Product (pre lty))
+
+instance ProductI (ProductRep Labels) where
+        accepts (NestRep tProd) item  = tAccepts tProd item 
+--         accepts (ListRep pros) item = lAccepts pros item
+        
+
+{-
+\end{code}
+
+\subsubsection{Testing the Product instance}
+
+Let's run some ad-hoc tests:\medskip
+
+\begin{run}
+We don't accept a nonempty "foo", because we only allow "foo1" or
+"foo2" inside, but we don't know what's inside.
+
+|*Main> accepts ex_prod1 (Inonempty "foo")|\\
+  \eval{accepts ex_prod1 (Inonempty "foo")}
+
+However, a "foo" with a "foo1" inside is accepted.
+
+|*Main> accepts ex_prod1 (Inest "foo" [Inonempty "foo1"])|\\
+  \eval{accepts ex_prod1 (Inest "foo" [Inonempty "foo1"])}
+\end{run}
+\medskip\needspace{12em}
+\begin{run}
+An empty "foo" is accepted too
+
+|*Main> accepts ex_prod1 (Inest "foo" [])|\\
+  \eval{accepts ex_prod1 (Inest "foo" [])}
+
+And so is an empty "bar"
+
+|*Main> accepts ex_prod1 (Inest "bar" [])|\\
+  \eval{accepts ex_prod1 (Inest "bar" [])}
+\end{run}
+
+\needspace{12em}
+
+% ------------------------------------------------------------                                                            
 \section{Processes}
+% ------------------------------------------------------------                                                            
 
 We shall now look at the various processes in the postal world and
 examine how they transform Sorting Products. 
@@ -334,150 +501,6 @@ tree-like data structure is able to express that. It is the
 combiniation of encoding a function and encoding arbitrary nesting,
 which makes things slightly more difficult.
 
-\subsection{Concrete Implementation}
-
-The above considerations about nesting and about |Split| not being
-allowed after |Pack| suggest, that a Product-representation needs two
-parts: one describes a container with its possible conents (encoding
-of nesting), the other one describes the combinations, which return
-|True| (encoding of function). These two mutually reference each
-other.
-
-This leads to the following:
-
-\begin{code}
-data Plist lty    = Plist [Pnest lty] | PlAny 
-                  deriving (Eq, Ord, Show)
-data Pnest lty   = Pnest lty (Plist lty)
-                  deriving (Eq, Ord, Show)
-
-class LabelPred lp where
-  match    :: lp -> lty -> Bool
-  toString :: lp -> String
-data Pitem lty = Pitem [Pitem lty]
-\end{code}
-
-A |Plist| is basically just a list of |Pnests|, with an additional
-constructors |PlAny|, which matches.
-
-A |Pnest| is defined by a container label of type |lty| and the
-possible content of the container, which is defined as a |Plist|.
-
-Note that
-\begin{itemize}
-\item A |Plist| (or |PlAny|) is always followed by a |Pnest| and vice versa.
-\item Expect to always find a |PlAny| or an empty list |[]| at the end.
-\end{itemize}
-
-A |Product| is then a union-type of these two parts
-\begin{code}
-data ProductRep lty = Listrep (Plist lty) | 
-                      NestRep (Pnest lty)
-\end{code}
-
-This is equivalent to the following UML diagram.
-
-\begin{figure}[htb!]
-\centering
-\includegraphics[width=8cm]{ProductsUml.eps}
-\caption{Products as UML}
-\end{figure}
-
-
-Let's define a |Plist| with toplevel Labels "foo" and "bar", where
-"foo" may contain "foo1" and "foo2"-labeled items and "bar" may
-contain nothing at all. 
-
-\begin{code}
-ex_foo =  Pnest "foo" 
-          (Plist [
-            Pnest "foo1" PlAny,
-            Pnest "foo2" PlAny
-           ])
-
-ex_bar =  Pnest "bar" (Plist [])
-
-ex_plist1 = Plist [ex_foo, ex_bar]
-
--- The whole Product is a |Listrep|.
-ex_prod1 = Listrep ex_plist1
-\end{code}
-
-\subsubsection{The Product instance}
-
-We should now be able to define a |Product| instance of
-|ProductRep|. Otherwise |ProductRep| would not be a suitable
-implementation of |Product|. We begin by answering when a |Pnest| and a |Plist| accept an Item. 
-
-A |Plist| accepts an Item, when it is accepted by one of its |Pnest|
-elements. We test this, using a yet-to-be-defined function
-|pAccepts|. \footnote{Since our accept functions take the "Product" as
-the first parameter and the Item as second, we have to flip the
-parameters in order to apply |any|}. Finally there is |PlAny| with an
-obvious implementations.
-
-\begin{code}
-lAccepts :: (Ord lty) => Plist lty -> Item lty -> Bool
-lAccepts (Plist pns) item = any (flip nAccepts $ item) pns
-lAccepts PlAny _  = True
-\end{code}
-
-The implementation for |nAccepts| works as follows: when testing an
-|Inonempty| we can only accept it, when the Product allows |PlAny| as
-contained Items and the toplevel Labels match. If we test an
-|Inest|, then also the toplevel Labels must match, but also |all|
-contained items must be accepted. In all other cases, the Item is not
-accepted.
-
-\begin{code}
-nAccepts :: (Ord lty) => Pnest lty -> Item lty -> Bool
-nAccepts (Pnest plbl PlAny) (Inonempty ilbl)  = plbl == ilbl
-nAccepts (Pnest plbl frep) (Inest ilbl items) = plbl == ilbl && 
-                                                all (lAccepts frep) items
-nAccepts _ _  = False
-
-\end{code}
-
-Now all the |Product| instance has to do, is dispatch to either
-|pAccepts| or |nAccepts|.
-
-\begin{code}
-instance Product ProductRep where
-        accepts (NestRep prod) item = nAccepts prod item
-        accepts (Listrep prod) item = lAccepts prod item
-        
-\end{code}
-
-\subsubsection{Testing the Product instance}
-
-Let's run some ad-hoc tests:\medskip
-
-\begin{run}
-We don't accept a nonempty "foo", because we only allow "foo1" or
-"foo2" inside, but we don't know what's inside.
-
-|*Main> accepts ex_prod1 (Inonempty "foo")|\\
-  \eval{accepts ex_prod1 (Inonempty "foo")}
-
-However, a "foo" with a "foo1" inside is accepted.
-
-|*Main> accepts ex_prod1 (Inest "foo" [Inonempty "foo1"])|\\
-  \eval{accepts ex_prod1 (Inest "foo" [Inonempty "foo1"])}
-\end{run}
-\medskip\needspace{12em}
-\begin{run}
-An empty "foo" is accepted too
-
-|*Main> accepts ex_prod1 (Inest "foo" [])|\\
-  \eval{accepts ex_prod1 (Inest "foo" [])}
-
-And so is an empty "bar"
-
-|*Main> accepts ex_prod1 (Inest "bar" [])|\\
-  \eval{accepts ex_prod1 (Inest "bar" [])}
-\end{run}
-
-\needspace{12em}
 \subsection{Set Operations}
 
 Let's now define some Set-operations.
@@ -699,6 +722,7 @@ ex_truck =
            -- 
 
            in (sRcs 0) -- (stray 0) !! 0
+-}
 \end{code}
 
 %\begin{figure}[htb!]

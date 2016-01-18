@@ -20,6 +20,7 @@ class Checkable a where
 class Predicate p where
   prSat     :: (Eq a) => p a -> a -> Bool
   prAnd     :: (Eq a) => p a -> p a -> Maybe (p a)
+  prOr     :: (Eq a) => p a -> p a -> p a
   prShow    :: (Show a) => p a -> String
 
 
@@ -32,6 +33,8 @@ instance Predicate LblList where
     case L.intersect lbls1 lbls2 of
       [] -> Nothing
       ys -> Just (LblList ys)
+  prOr (LblList lbls1) (LblList lbls2) =
+          LblList (L.union lbls1 lbls2)
   prShow = show
 
 ------------------------------------------------------------  
