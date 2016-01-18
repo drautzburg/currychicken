@@ -75,14 +75,16 @@ lpp a = do
 \end{code}
 %endif
 
+% ------------------------------------------------------------
 \section{Items and Products}
+% ------------------------------------------------------------
 
 \subsection{Items}
 
 Mail items can be letters, parcels, trays, roll-containers, truck and
 many more. It appears like some of them are containers and others are
 \emph{atomic}. However emphasizing the distinction between containers
-and atomic items turned out to be suboptimal, primarily because this
+and atomic items turned out to be misleading, primarily because this
 distinction lies in the eye of the beholder and is not a true property
 of a mail item.
 
@@ -114,10 +116,11 @@ in that Tree. A leaf stands for an Item whose content is unknown, not
 for an empty container. We known precisely what's inside an empty
 container, namely nothing.
 
-These consideration lead to the following definition:
+These considerations lead to the following definition:
 \begin{code}
 
-data Tree a = Node a | Tree a [Tree a]
+data Tree a = Leaf a | 
+              Tree a [Tree a]
               deriving (Eq, Ord, Show)
 
 type Item lty = Tree lty
@@ -132,50 +135,72 @@ different label types can always be united under one union-type.
 \subsection{Products}
 
 A Product tells us, whether or not it \emph{accepts} a given item.
-Hence, at its heart, a Product is a \emph{predicate}, i.e. a function
-|Item lty -> Bool|.
+Hence, at its heart, a Product is a function |Item lty -> Bool|.
 
-Now, you cannot create a predicate from nothing. Something must be
-assumed about the ingredients it is built from. Our reasoning is as
-follows: somehow you must be able to tell, wheter a certain label is
-accepted, i.e you need a predicate for labels.
+Now, something must be assumed about the ingredients a Product is
+built from. Our reasoning is as follows: somehow you must be able to
+test whether two labels are equal, otherwise it will be impossible to
+tell whether a nested thing like an Item matches some criteria. Since
+we want to leave the actual label-type unspecified, we settle for a
+predicate over anything which can be compared for equality.
 
 \begin{code}
-class Predicate p where
-  prSat     :: (Eq a) => p a -> a -> Bool
-  prAnd     :: (Eq a) => p a -> p a -> Maybe (p a)
-  prOr     :: (Eq a) => p a -> p a -> p a
-  prShow    :: (Show a) => p a -> String
+class IPredicate p where
+  prSat          :: (Eq a) => p a -> a -> Bool
+  prShow         :: (Show a) => p a -> String
+  prIntersection :: (Eq a) => p a -> p a -> Maybe (p a)
+  prUnion        :: (Eq a) => p a -> p a -> p a
 
 \end{code}
+
+You see, we asked for a number of other things besides |prSat|. This
+is best understood by examining what |SOP|, the
+Sortcode-range-building component in ADM-SPM does. \emph{All} that SOP
+does is to manipulate such simple predicates. It has no concept of
+nested items. But it has a concept of printing the results of such
+manipulations (|prShow|), otherwise we could not generate Sortplans,
+and it can build unions and do some other set operations.
+
+SOP does this using a particular encoding for predicates, called
+|EXPANDS_TO|. Though we do not want to use such an encoding here, we
+want to be able to do so later. Hence we cannot be too specific about
+the encoding of a predicate and therefore we just specify the
+interface.
 
 Items are really nested things, but a simple predicate on labels does
 not take any nesting into account. The next thing we need to do, is to
-add the power to check a nested Item, or in general to apply some
-aribitrary superstructure on such predicates.
+lift the capability to check Labels to the capability to check Items,
+however nested it may be.
 
 This is what we ask from a Product: Given a predicate |pre| and a
-label type |lty|, construct something which acts like a predicate on
-Items. In other words, lift the capability to check a single label to
-the capability to check an Item, however nested it may be.
+label type |lty|, construct something which implements the function
+|accepts|.
 
 \begin{code}
-class ProductI prod where
-        accepts :: (Predicate pre, Eq lty) => 
-                   prod pre lty -> Item lty -> Bool
+class IProduct prod where
+        accepts :: (IPredicate pred, Eq lty) => 
+                   prod (pred lty) -> Item lty -> Bool
 
 \end{code}
+
+You might be tempted to think, that |IProduct| is also an
+|IPredicate|, because |accepts| maps an |Item| to a Bool. So shouldn't
+it be a "Predicate for Items"? This is not the case, because
+|Predicate| works on everything which can be compared for equality
+("|(Eq a)=>|"), but |Product| is taylored specificly to the kind of
+nesting we expect from Items. Hence we cannot say that |Product| is a
+Predicate for \emph{everything}, which can be compared for equality.
 
 \subsection{Product Implementation}
 
 When you ask youself the question: "what does a sorting process
 accept?", then the answer is: "everything that that can be sorted to
-one of its outlets, excluding |NOT_IN_PLAN|. There is an implicit
+one of its outlets (|NOT_IN_PLAN| excluded). There is an implicit
 \emph{or} condition in this definition.
 
 Howevever, when you ask yourself: "what does an unpack process
-accept", then the answer is: "everything that carries a specified
-label, and whose content satisfies certain conditions".
+accept", then the answer is: "everything that carries certain labels,
+and whose content satisfies certain conditions".
 
 The latter emphasizes a tree-like structure, wheras the former
 emphasizes a collection of possibilities. So we need to combine
@@ -186,18 +211,17 @@ A Product is then either
 \item a Tree of predicates or 
 \item a list of such Trees
 \end{itemize}
- 
-Since constructing a List of something hardly warrants a separate
-type, we simply say, that a Product is a Tree of predicates.
+
+So:
 
 \begin{code}
-type Product pre = Tree pre
+data Product pred = ProdTree (Tree pred) |
+                    ProdList [Tree pred] 
 \end{code}
 
-Finally we need a suitable implementation for a predicate on
-labels. We need a way to check if a labels matches certain
-conditions. The most simple implementation is just a list of possible
-labels.
+Finally we need a suitable encoding for a predicate on labels. We need
+a way to check if a labels matches certain conditions. The most simple
+implementation is just a list of possible labels.
 
 \begin{code}
 data Labels lty = Labels [lty]
@@ -207,13 +231,13 @@ data Labels lty = Labels [lty]
 This is indeed a predicate:
  
 \begin{code}
-instance Predicate Labels where
+instance IPredicate Labels where
   prSat  (Labels lbls) lbl = lbl `L.elem` lbls
-  prAnd  (Labels lbls1) (Labels lbls2) =
+  prIntersection  (Labels lbls1) (Labels lbls2) =
     case L.intersect lbls1 lbls2 of
       [] -> Nothing
       ys -> Just (Labels ys)
-  prOr (Labels lbls1) (Labels lbls2) =
+  prUnion (Labels lbls1) (Labels lbls2) =
           Labels (L.union lbls1 lbls2)
   prShow = show
 
@@ -222,63 +246,56 @@ instance Predicate Labels where
 \subsubsection{The Product instance}
 
 In order to convince ourselves that |Product| satisfies the
-constraints defined in |ProductI|, we'll now implement |accepts|.
+constraints defined in |IProduct|, we'll now implement |accepts|.
 
 \begin{code}
--- Is item accepted by any of the predicates in a list ?
-lAccepts :: (Predicate pre, Eq lty) => [Product (pre lty)] -> Item lty -> Bool
-lAccepts pros item = any (flip tAccepts $ item) pros
-
-
--- Is item accepted by a single Product-Node
-tAccepts :: (Predicate pre, Eq lty) => Product (pre lty) -> Item lty -> Bool
-tAccepts (Node preLty) (Node lbl)         = prSat preLty lbl
-tAccepts (Node preLty) (Tree lbl _ )      = prSat preLty lbl
-tAccepts (Tree preLty _) (Node lbl)       = False -- don't know what's inside
-tAccepts (Tree preLty ps) (Tree lbl lbls) = prSat preLty lbl &&
-                                            -- all items inside must be accepted
-                                            all (lAccepts ps) lbls
-
+-- Is item accepted by any of the Products in a list?
+lAccepts :: (IPredicate pred, Eq lty) => 
+            [Tree (pred lty)] -> Item lty -> Bool
+lAccepts prods item = any (flip tAccepts $ item) prods
+\end{code}
+\needspace{12em}
+\begin{code}
+-- Is item accepted by a single Product-Leaf?
+tAccepts :: (IPredicate pred, Eq lty) => 
+            Tree (pred lty) -> Item lty -> Bool
+tAccepts (Leaf pred) (Leaf lbl)         = prSat pred lbl
+tAccepts (Leaf pred) (Tree lbl _ )      = prSat pred lbl
+tAccepts (Tree pred _) (Leaf lbl)       = False -- don't know what's inside
+tAccepts (Tree pred prods) (Tree lbl lbls) = prSat pred lbl &&
+                                             -- all items inside must be accepted
+                                             all (lAccepts prods) lbls
 
 \end{code}
 
-Now all the |Product| instance has to do, is dispatch to either
-|pAccepts| or |tAccepts|.
+To implement |accepts| we just need to dispatch to either |pAccepts|
+or |tAccepts|.
 
 \begin{code}
-data ProductRep pre lty = ListRep [Product (pre lty)] | 
-                          NestRep (Product (pre lty))
+instance IProduct Product where
+         accepts (ProdList l) = lAccepts l
+         accepts (ProdTree t) = tAccepts t
 
-instance ProductI ProductRep  where
-  accepts (NestRep tProd) = tAccepts tProd 
-  accepts (ListRep prods) = lAccepts prods
-
-instance Predicate (ProductRep pre)where
-  prSat = undefined
 \end{code}
 
 
 \subsubsection{Testing the Product instance}
 
-Let's define a List with toplevel Labels "foo" and "bar", where
+Let's define a |ProdList| with toplevel Labels "foo" and "bar", where
 "foo" may contain "foo1" and "foo2"-labeled items and "bar" may
 contain nothing at all. 
 
 \begin{code}
--- shorthands
-tree lbl xs = Tree (Labels [lbl]) xs
-node lbl = Node (Labels [lbl])
 
-ex_foo =  tree "foo" 
+ex_foo =  Tree (Labels ["foo"])
           [
-            node "foo1",
-            node "foo2"
-           ]
+            Leaf (Labels ["foo1","foo2"])
+          ]
 
-ex_bar =  node "bar" 
+ex_bar =  Tree (Labels ["bar"]) []
 
--- The whole Product is a |ListRep|.
-ex_prod1 = ListRep [ex_foo, ex_bar]
+-- The whole Product is a |ProdList|.
+ex_prod1 = ProdList [ex_foo, ex_bar]
 \end{code}
 
 \medskip
@@ -286,13 +303,13 @@ ex_prod1 = ListRep [ex_foo, ex_bar]
 We don't accept a nonempty "foo", because we only allow "foo1" or
 "foo2" inside, but we don't know what's inside.
 
-|*Main> accepts ex_prod1 (Node "foo")|\\
-  \eval{accepts ex_prod1 (Node "foo")}
+|*Main> accepts ex_prod1 (Leaf "foo")|\\
+  \eval{accepts ex_prod1 (Leaf "foo")}
 
 However, a "foo" with a "foo1" inside is accepted.
 
-|*Main> accepts ex_prod1 (Tree "foo" [Node "foo1"])|\\
-  \eval{accepts ex_prod1 (Tree "foo" [Node "foo1"])}
+|*Main> accepts ex_prod1 (Tree "foo" [Leaf "foo1"])|\\
+  \eval{accepts ex_prod1 (Tree "foo" [Leaf "foo1"])}
 \end{run}
 
 \medskip\needspace{12em}
@@ -306,6 +323,11 @@ And so is an empty "bar"
 
 |*Main> accepts ex_prod1 (Tree "bar" [])|\\
   \eval{accepts ex_prod1 (Tree "bar" [])}
+
+But a nonempty "bar is not, because "bar" must be empty
+
+|*Main> accepts ex_prod1 (Leaf "bar")|\\
+  \eval{accepts ex_prod1 (Leaf "bar")}
 \end{run}
 
 \needspace{12em}
@@ -418,7 +440,7 @@ There are two different merging processes:
   the rollcontainer already ``knows'' what routes can be accepted.
   \begin{figure}[htb!]
     \centering
-    \includegraphics[width=5cm]{ProductsCombine.eps}
+%    \includegraphics[width=5cm]{ProductsCombine.eps}
     \caption{Combine}
   \end{figure}
 \end{description}

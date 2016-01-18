@@ -41,9 +41,9 @@ clean:
 	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
 
 
-Products.pdf: Products.lhs ProductsRestrict.eps ProductsMerge.eps ProductsCombine.eps ProductsSplit.eps \
+Products.pdf: Products.lhs ProductsRestrict.eps ProductsMerge.eps  ProductsSplit.eps \
 	ProductsSplitPack.eps ProductsPack.eps ProductsExRec.eps ProductsUnpack.eps
-
+# ProductsCombine.eps
 
 # ------------------------------------------------------------
 # verbatim files

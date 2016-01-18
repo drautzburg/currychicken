@@ -9,14 +9,6 @@ data Tree a = Tree a [Tree a] | Node a
 type Item a = Tree a
 
 ------------------------------------------------------------
-class Checkable a where
-  cSat :: (Ord a) => [a] -> a -> Bool
-  cAnd :: (Ord a) => [a] -> [a]
-  cOr :: (Ord a) => [a] -> [a]
-  cFilter :: (Ord a) => [a] -> (a->Bool) -> [a]
-
-
-
 class Predicate p where
   prSat     :: (Eq a) => p a -> a -> Bool
   prAnd     :: (Eq a) => p a -> p a -> Maybe (p a)
@@ -36,6 +28,11 @@ instance Predicate LblList where
   prOr (LblList lbls1) (LblList lbls2) =
           LblList (L.union lbls1 lbls2)
   prShow = show
+
+data Product pred lty = Por [Tree (pred lty)] | Pnest (Tree (pred lty))
+
+instance Predicate (Product pred) where
+        prSat (Pnest (Node pred)) (Node lbl) = undefined
 
 ------------------------------------------------------------  
 
