@@ -17,7 +17,29 @@
 \usepackage{colortbl}	
 \usepackage{pgf}
 \usepackage[framemethod=tikz]{mdframed}
-\newmdenv[frametitle=Example,backgroundcolor=gray!05,roundcorner=2pt]{run}
+\RaggedRight
+\linespread{1.25}
+\newmdenv[
+  frametitle=Note,
+  backgroundcolor=gray!05,
+  topline=false,
+  bottomline=false,
+  skipabove={2em},
+  skipbelow={2em},
+  needspace=12em,
+  innerrightmargin={2em}
+]{note}
+
+\newmdenv[
+  frametitle=Example,
+  backgroundcolor=white,
+  topline=false,
+  bottomline=false,
+  skipabove={2em},
+  skipbelow={2em},
+  needspace=18em
+]{run}
+
 
 % --------------
 % tikz
@@ -83,22 +105,28 @@ lpp a = do
 
 Mail items can be letters, parcels, trays, roll-containers, truck and
 many more. It appears like some of them are containers and others are
-\emph{atomic}. However emphasizing the distinction between containers
+\emph{atomic}. However, emphasizing the distinction between containers
 and atomic items turned out to be misleading, primarily because this
 distinction lies in the eye of the beholder and is not a true property
 of a mail item.
 
 For a parcel processing company a parcel appears like an atomic
-item. However it is certainly a container and it does contain other
+item. However, it is certainly a container and it does contain other
 items. It only appears atomic, because the parcel company does not
-care about what's inside,
+care about what's inside.
 
 Therefore we treat all items as containers which could potentially
 contain other items. We need an additional means of expression for
 items where we don't care (or know) what's inside.
 
-Furthermore items are labeled. The label stands for everything we know
-about the item. The weight of a parcel may technically not be printed
+Furthermore items are labeled.
+
+\begin{note}
+The label stands for everything we need to now about the item,
+including things like the container type.
+\end{note}
+
+The weight of a parcel may technically not be printed
 on a label, but we treat it as part of the label nontheless. We make
 no assumption about the label format, i.e. whether an item is
 characterized by Format, Class and Destination or by anything else.
@@ -121,7 +149,7 @@ These considerations lead to the following definition:
 
 data Tree a = Leaf a | 
               Tree a [Tree a]
-              deriving (Eq, Ord, Show)
+              deriving (Eq, Ord, Show) 
 
 type Item lty = Tree lty
 
@@ -133,7 +161,7 @@ trays and letters. In practice, this is not a limitation, because
 different label types can always be united under one union-type.
 
 \subsection{Products}
-
+\subsubsection{Introduction}
 A Product tells us, whether or not it \emph{accepts} a given item.
 Hence, at its heart, a Product is a function |Item lty -> Bool|.
 
@@ -170,7 +198,7 @@ interface.
 Items are really nested things, but a simple predicate on labels does
 not take any nesting into account. The next thing we need to do, is to
 lift the capability to check Labels to the capability to check Items,
-however nested it may be.
+however nested they may be.
 
 This is what we ask from a Product: Given a predicate |pre| and a
 label type |lty|, construct something which implements the function
@@ -183,6 +211,11 @@ class IProduct prod where
 
 \end{code}
 
+\begin{note}
+|pred lty| is a predicate over labels of type |lty|. You may see this
+as the set of labels, which are acceptable
+\end{note}
+
 You might be tempted to think, that |IProduct| is also an
 |IPredicate|, because |accepts| maps an |Item| to a Bool. So shouldn't
 it be a "Predicate for Items"? This is not the case, because
@@ -191,7 +224,7 @@ it be a "Predicate for Items"? This is not the case, because
 nesting we expect from Items. Hence we cannot say that |Product| is a
 Predicate for \emph{everything}, which can be compared for equality.
 
-\subsection{Product Implementation}
+\subsubsection{Product Implementation}
 
 When you ask youself the question: "what does a sorting process
 accept?", then the answer is: "everything that that can be sorted to
@@ -216,8 +249,16 @@ So:
 
 \begin{code}
 data Product pred = ProdTree (Tree pred) |
-                    ProdList [Tree pred] 
+                    ProdList [Tree pred]
+                    deriving (Show)
 \end{code}
+\begin{note}
+We will mostly be dealing with |(Tree pred)| and |[Tree pred]|
+datatypes. The notion of a |Product| just packs these two under a
+union-type. Many operations only accept one of the two |Product|
+variants.
+\end{note}
+
 
 Finally we need a suitable encoding for a predicate on labels. We need
 a way to check if a labels matches certain conditions. The most simple
@@ -243,8 +284,6 @@ instance IPredicate Labels where
 
 \end{code}
 
-\subsubsection{The Product instance}
-
 In order to convince ourselves that |Product| satisfies the
 constraints defined in |IProduct|, we'll now implement |accepts|.
 
@@ -261,7 +300,7 @@ tAccepts :: (IPredicate pred, Eq lty) =>
             Tree (pred lty) -> Item lty -> Bool
 tAccepts (Leaf pred) (Leaf lbl)         = prSat pred lbl
 tAccepts (Leaf pred) (Tree lbl _ )      = prSat pred lbl
-tAccepts (Tree pred _) (Leaf lbl)       = False -- don't know what's inside
+tAccepts (Tree pred _) (Leaf lbl)       = False -- don't know what's inside 
 tAccepts (Tree pred prods) (Tree lbl lbls) = prSat pred lbl &&
                                              -- all items inside must be accepted
                                              all (lAccepts prods) lbls
@@ -279,7 +318,7 @@ instance IProduct Product where
 \end{code}
 
 
-\subsubsection{Testing the Product instance}
+\subsubsection{Examples}
 
 Let's define a |ProdList| with toplevel Labels "foo" and "bar", where
 "foo" may contain "foo1" and "foo2"-labeled items and "bar" may
@@ -295,13 +334,14 @@ ex_foo =  Tree (Labels ["foo"])
 ex_bar =  Tree (Labels ["bar"]) []
 
 -- The whole Product is a |ProdList|.
-ex_prod1 = ProdList [ex_foo, ex_bar]
+ex_plist1 = [ex_foo, ex_bar]
+ex_prod1 = ProdList ex_plist1
 \end{code}
 
 \medskip
 \begin{run}
 We don't accept a nonempty "foo", because we only allow "foo1" or
-"foo2" inside, but we don't know what's inside.
+"foo2" inside, but we don't know what's inside ``foo''.
 
 |*Main> accepts ex_prod1 (Leaf "foo")|\\
   \eval{accepts ex_prod1 (Leaf "foo")}
@@ -340,8 +380,8 @@ expect to receive the Firestick itself, a remote control a power
 supply, two batteries and an HDMI extender cable. If any of these
 items are \emph{missing}, you have reason to complain and you may
 refuse to accept the item. You would however, not complain when there
-were some extra items in the package, like some flyers or candy. This
-is because all these items have a value greater than zero.
+were some extra items in the package, like some candy. This is because
+these these extra items have a value greater than zero.
 
 When dealing with mail, things are different. Mail items have a value
 less than zero. A process in the chain will not complain when it
@@ -349,9 +389,9 @@ receives nothing at all. It only complains, when it receives something
 it doesn't want, just like you, as a mail recipient, will
 complain when you receive mail which is not for you.
 
-So Sorting Products do not specify what must be included, but what
-\emph{may} be included. Or alterternatively, they specify what must
-\emph{not} be included.
+So logistic (``Sorting'') Products do not specify what must be
+included, but what \emph{may} be included. Or alterternatively, they
+specify what must \emph{not} be included.
 
 
 
@@ -383,24 +423,8 @@ this, we label the input products with |y|, as they are the result of
 the transformation and the output products with |x|, as they are the
 input to the transformation.
 
-Products which refer to a single container-Label are printed in red,
-the others are printed in blue.
-
-\subsection{Pack}
-
-\begin{figure}[htb!]
-\centering
-\includegraphics[width=5cm]{ProductsPack.eps}
-\caption{Pack}
-\end{figure}
-
-Pack takes Items and places them inside a Container with a specified
-label |yc|. 
-
-You can compute |yc| and |yi| only when |xi| accepts containers whith
-a single label. Unfortunately, there are Products which reference more
-than one container label (see |Split| below).
-
+Products which refer to a single containerare printed in red and with
+a trapezium shape, the Lists are printed as blue circles.
 
 \subsection{Unpack}
 
@@ -410,11 +434,99 @@ than one container label (see |Split| below).
 \caption{Unpack}
 \end{figure}
 
-To compute the Product |yi|, we must know the container label |xc|. It
-cannot be computed from anything, but needs to be specified by the
-planner. However once set, this information travels "left" through
-other processes, such that a potential upsream |Pack| Process will
-know what label to use.
+What does an |unpack| process accept? It will accept containers which
+bear a certain content and which carry certain labels. Note that our
+notion of a "Container-Label" includes everything we know about the
+container, including the container type.
+
+But the content is not really determined by the unpack process
+itself. Whatever it unpacks will be sent to some other process, which
+also only accepts certain things. The unpack process can only
+influence the containers it accepts. \footnote{It may in theory choose to accept
+\emph{less} content than its downstream processes, but that is better
+handled by a dedicated operation and kept outside of mere unpacking.}
+
+The container will in most cases be fully described by its label. This
+is true if know that the container must be empty once unpacked. But in
+full generality, this is not the case. 
+
+\begin{note}
+
+An Unpack process removes content from a container, such that both the
+content and the remaining container statisfy certain criteria. It may
+ask the container to be empty once unpacked, but it does not have to.
+
+\end{note}
+
+\begin{code}
+pUnpack :: (IPredicate pred, Eq lty) =>
+           Tree (pred lty) -> [Tree (pred lty)] -> Tree (pred lty)
+pUnpack (Tree cntLblP cntCont) trees = Tree cntLblP (cntCont ++ trees)
+
+-- example
+ex_container1 = Tree (Labels ["Tray-BBZ1","Bag-BBZ1"])
+                     [Leaf (Labels ["lint"])]
+\end{code}
+
+Once unpacked, the container above may still contain |lint| and hence
+the unpack process accepts |lint|.
+
+\begin{run}
+       |*Main> pUnpack ex_container1 ex_plist1|
+\perform{lpp $ pUnpack ex_container1 ex_plist1}
+\end{run}
+
+\subsection{Pack}
+
+\begin{figure}[htb!]
+\centering
+\includegraphics[width=5cm]{ProductsPack.eps}
+\caption{Pack}
+\end{figure}
+
+The Pack process is the dual of the Unpack process. It returns
+information about the acceptable items and the acceptable
+containers. This is all already specified by a downstream Unpack
+process, so a Pack process has very little choice.
+
+In the example from the Unpack process, a Pack process could use
+containers labeled |Tray-BBZ1| or |Bag-BBZ1|. Without further
+information, we cannot decide which of the two to use. 
+
+Most of the time, it may accept only empty containers, but nothing bad
+will happen, if the container already contains something, provided
+that content is accepted by the downstream process. So a Pack process
+does have a certain choice. In full generality, it can accept content
+both as to-be-packed new material and as material which is already in
+the container. Note that an empty container will always be accepted if
+it has the right label.
+
+\begin{note}
+A |Pack| process adds content to a container. It computes an "item
+product" and a "container product". In general the container does not
+have to be empty.
+\end{note}
+
+\begin{code}
+pPack :: (IPredicate pred, Eq lty) =>
+         Tree (pred lty)  -> ([Tree (pred lty)], Tree (pred lty))
+pPack (Tree cntLblP cntCont) = (cntCont, container)
+  where
+    container = Tree cntLblP cntCont
+
+-- from the example above
+ex_container2 = pUnpack ex_container1 ex_plist1
+\end{code}
+
+This example shows, what a Pack process accepts. The top part is the
+actual content and the bottom part is the container. Note that the
+container may be pre-filled with the same content that can be added to
+it.
+
+\begin{run}
+       |*Main> pPack $ ex_container2|
+\perform{lpp $ pPack $ ex_container2}
+\end{run}
 
 \subsection{Merge and Combine}
 

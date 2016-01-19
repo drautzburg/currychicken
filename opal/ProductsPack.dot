@@ -8,12 +8,12 @@ digraph d {
 		yi[label="[yi]"]
 		}
 	subgraph nest {
-		node [shape=circle, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
+		node [shape=invtrapezium, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
 		xi 
+		ylbl[label=ycnt]
 		}
 	subgraph others {
 		node [shape=circle, style=filled, fillcolor="#DDDDDD", fixedsize=true, width=0.6]
-		ylbl
 	}				
 	subgraph process {
 		node [shape=box, style=rounded]
