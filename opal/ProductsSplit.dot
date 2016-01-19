@@ -4,7 +4,8 @@ digraph d {
 
 	rankdir=LR
 	subgraph nest {
-		node [shape=circle, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
+		node [shape=invtrapezium, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
+		xi3[label="xi3"]
 		}		
 	subgraph list {
 		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
@@ -18,4 +19,5 @@ digraph d {
 	}
 yi -> S -> xi1
 S -> xi2
+S -> xi3
 }
