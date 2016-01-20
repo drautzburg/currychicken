@@ -3,14 +3,20 @@ digraph d {
 	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
 
 	rankdir=LR
-	subgraph port {
-		node [shape=circle, style=filled, fillcolor="#EEEEEE", fixedsize=true, width=0.4]
+	subgraph product {
+		node [shape=Mcircle, style=filled, fillcolor="#DDFFDD", fixedsize=true, width=0.4]
 		px
 		py
 		}
 	subgraph process {
 		node [shape=box, style=rounded]
-		restrict
+		restrict [label=R]
 	}
+	subgraph invis {
+		node [shape=box, style=invis]
+		pred
+	}
+{rank=same; pred restrict}	
 py -> restrict -> px
+pred->restrict[label="pred  ", color=blue, penwidth=1, arrowhead=open]
 }

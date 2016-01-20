@@ -3,6 +3,7 @@
 %include greek.fmt
 %options ghci -fglasgow-exts
 
+\usepackage{float}
 \usepackage{tikz}
 \usetikzlibrary{arrows,mindmap,backgrounds}
 \usepackage{fancyhdr}
@@ -37,7 +38,7 @@
   bottomline=false,
   skipabove={1em},
   skipbelow={1em},
-  needspace=18em
+  needspace=6em
 ]{run}
 
 
@@ -178,9 +179,10 @@ predicate over anything which can be compared for equality.
 class IPredicate p where
   prSat          :: (Eq a) => p a -> a -> Bool
   prShow         :: (Show a) => p a -> String
-  prAnd          :: (Eq a) => p a -> p a -> Maybe (p a)
+  prAnd          :: (Eq a) => p a -> p a -> p a
   prOr           :: (Eq a) => p a -> p a -> p a
   prAny          :: p a
+  prNone          :: p a
 \end{code}
 
 You see, we asked for a number of other things besides |prSat|. This
@@ -204,7 +206,14 @@ however nested they may be.
 
 This is what we ask from a Product: Given a predicate |pre| and a
 label type |lty|, construct something which implements the function
-|accepts|.
+|accepts|\footnote{You might be tempted to think, that |IProduct| is
+  also an |IPredicate|, because |accepts| maps an |Item| to a Bool. So
+  shouldn't a Product be a "Predicate for Items"? This is not the
+  case, because |Predicate| works on everything which can be compared
+  for equality ("|(Eq a)=>|"), but |Product| is taylored specificly to
+  the kind of nesting we expect from Items. Hence we cannot say that
+  |Product| is a Predicate for \emph{everything}, which can be
+  compared for equality.}.
 
 \begin{code}
 class IProduct prod where
@@ -215,16 +224,9 @@ class IProduct prod where
 
 \begin{note}
 |pred lty| is a predicate over labels of type |lty|. You may see this
-as the set of labels, which are acceptable
+as the set of labels, which are acceptable. 
 \end{note}
 
-You might be tempted to think, that |IProduct| is also an
-|IPredicate|, because |accepts| maps an |Item| to a Bool. So shouldn't
-it be a "Predicate for Items"? This is not the case, because
-|Predicate| works on everything which can be compared for equality
-("|(Eq a)=>|"), but |Product| is taylored specificly to the kind of
-nesting we expect from Items. Hence we cannot say that |Product| is a
-Predicate for \emph{everything}, which can be compared for equality.
 
 \subsubsection{Product Implementation}
 
@@ -274,30 +276,32 @@ data Labels lty = Labels [lty] | AnyLabel
                    deriving (Eq, Ord, Show)
 \end{code}
 
-This is indeed a predicate:
+This is indeed a predicate, because we can implement all the functions
+required by |IPredicate|
  
 \begin{code}
 instance IPredicate Labels where
   prSat  AnyLabel _ = True
   prSat  (Labels lbls) lbl = lbl `L.elem` lbls
 
-  prAnd AnyLabel y = Just y
-  prAnd  (Labels lbls1) (Labels lbls2) =
-    case L.intersect lbls1 lbls2 of
-      [] -> Nothing
-      ys -> Just (Labels ys)
+  prAnd AnyLabel y = y
+  prAnd  (Labels lbls1) (Labels lbls2) = Labels $ L.intersect lbls1 lbls2
       
   prOr AnyLabel y = AnyLabel
   prOr (Labels lbls1) (Labels lbls2) =
           Labels (L.union lbls1 lbls2)
+
   prShow = show
 
-  prAny = AnyLabel
+  prAny  = AnyLabel
+  prNone = Labels []
 
 \end{code}
 
 In order to convince ourselves that |Product| satisfies the
-constraints defined in |IProduct|, we'll now implement |accepts|.
+constraints defined in |IProduct|, we'll now implement |accepts|. We
+start by implementing accept functions for Trees and list of Trees
+separately.
 
 \begin{code}
 -- Is item accepted by any of the Products in a list?
@@ -362,7 +366,13 @@ However, a "foo" with a "foo1" inside is accepted.
 
 |*Main> accepts ex_prod1 (Tree "foo" [Leaf "foo1"])|\\
   \eval{accepts ex_prod1 (Tree "foo" [Leaf "foo1"])}
+
+But not when it also cotnains a "lint"
+
+|*Main> accepts ex_prod1 (Tree "foo" [Leaf "foo1", Leaf "lint"])|\\
+  \eval{accepts ex_prod1 (Tree "foo" [Leaf "foo1", Leaf "lint"])}
 \end{run}
+
 
 \medskip\needspace{12em}
 \begin{run}
@@ -435,12 +445,18 @@ this, we label the input products with |y|, as they are the result of
 the transformation and the output products with |x|, as they are the
 input to the transformation.
 
-Products which refer to a single containerare printed in red and with
-a trapezium shape, the Lists are printed as blue circles.
+We use different symbols for Processes, Trees, Lists and Products: 
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1.5cm]{ProductsSymbols.eps}
+\caption{Symbols}
+\end{figure}
+
 
 \subsection{Unpack}
 
-\begin{figure}[htb!]
+\begin{figure}[H]
 \centering
 \includegraphics[width=5cm]{ProductsUnpack.eps}
 \caption{Unpack}
@@ -448,19 +464,20 @@ a trapezium shape, the Lists are printed as blue circles.
 
 What does an |unpack| process accept? It will accept containers which
 bear a certain content and which carry certain labels. Note that our
-notion of a "Container-Label" includes everything we know about the
+notion of a container-label includes everything we know about the
 container, including the container type.
 
 But the content is not really determined by the unpack process
 itself. Whatever it unpacks will be sent to some other process, which
-also only accepts certain things. The unpack process can only
-influence the containers it accepts\footnote{It may in theory choose to accept
-\emph{less} content than its downstream processes, but that is better
-handled by a dedicated operation and kept outside of mere unpacking.}.
+also accepts only certain things. The unpack process itself can only
+influence the containers it accepts\footnote{It may in theory choose
+to accept \emph{less} content than its downstream processes, but that
+is better handled by a dedicated operation and kept outside of mere
+unpacking.}.
 
 The container will in most cases be fully described by its label. This
-is true if know that the container must be empty once unpacked. But in
-full generality, this is not the case. 
+is true if we know that the container must be empty once unpacked. But
+in full generality, this is not the case.
 
 \begin{note}
 
@@ -493,7 +510,7 @@ the unpack process accepts |lint|.
 
 \subsection{Pack}
 
-\begin{figure}[htb!]
+\begin{figure}[H]
 \centering
 \includegraphics[width=5cm]{ProductsPack.eps}
 \caption{Pack}
@@ -546,24 +563,23 @@ it.
 \end{run}
 
 \subsection{Split}
-
-\begin{figure}[htb!]
+\begin{figure}[H]
 \centering
 \includegraphics[width=5cm]{ProductsSplit.eps}
 \caption{Split}
 \end{figure}
 
-
 A |Split| process accepts things, which are accepted by one of its
 outputs. Each output may accept either a |ProdTree| or a |ProdList|.
 
+
 The constructed Product |yi| is always a list. To compute it, we must
-build the union over all the output product. 
+build the union over all the output products. 
 
 \begin{code}
-pSplit :: (IPredicate pred, Eq lty, Eq (pred lty)) => 
+pSplit' :: (IPredicate pred, Eq lty, Eq (pred lty)) => 
           [Product (pred lty)] -> [Tree (pred lty)]
-pSplit ps = foldr L.union [] (map toList ps)
+pSplit' ps = foldr L.union [] (map toList ps)
         where
             toList (ProdTree x)  = [x]
             toList (ProdList xs) = xs
@@ -573,76 +589,185 @@ This is a somewhat crude implementation, because with our example
 Product from earlier and this additional Product:
 
 \begin{code}
-ex_foo2 =  Tree (Labels ["xxx"])
-          [
-            Leaf (Labels ["foo1","foo2"])
-          ]
+ex_prod2 = ProdList
+  [
+    Tree (Labels [ "xxx" ]) [ Leaf (Labels [ "foo1" , "foo2" ]) ],
+    Tree (Labels [ "bar" ]) [ Leaf (Labels [ "bar1" ]) ]
+  ]
 
-ex_bar2 =  Tree (Labels ["bar"]) [Leaf (Labels ["bar1"])]
-ex_plist2 = [ex_foo2, ex_bar2]
-ex_prod2 = ProdList ex_plist2
 \end{code}
 
 \needspace{22em}
 We get
 
 \begin{run}
-       |*Main> pSplit [ex_prod1, ex_prod2]|
-\perform{lpp $ pSplit [ex_prod1, ex_prod2]}
+       |*Main> pSplit' [ex_prod1, ex_prod2]|
+\perform{lpp $ pSplit' [ex_prod1, ex_prod2]}
 \end{run}
 
 The "foo" and "xxx" Product accept different labels, but accept the
 same content. Clearly those two should have been merged into
 one. Likewise the two "bar" products could be merged, as they accept
-the same labels, their content could be merged into one. In fact, only
-the second "bar" Product is needed, as it allows a "bar" to contain a
-"bar1", which always includes an empty "bar".
+the same labels and their contents could be merged into one. In fact,
+only the second "bar" Product is needed, as it allows a "bar" to
+contain a "bar1", which always includes an empty "bar".
 
+To do better than that we need a smarter union operation. We do this
+as follows: we group a list of Trees into groups with matching
+children and merge the label-predicates using the function |prOr|. We
+also group a list of Trees into groups with matching label-predicates
+and merge the children by concatenating the lists, using |++|. Each
+operation returns a list of trees, so we can run one after the other.
 
+\needspace{12em}
+So we get:
 \begin{code}
+pUnion :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
+          [Tree (pred lty)] -> [Tree (pred lty)]
+pUnion = (childSweep . labelSweep)
+  where
+    labelSweep = map mergeLabels   . groupTrees onChildren
+    childSweep = map mergeChildren . groupTrees onLabels
+    groupTrees onWhat = L.groupBy (same onWhat) . L.sortBy onWhat
 
-onHead t1 t2  = compare (pred t1) (pred t2)
+pSplit :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
+          [Product (pred lty)] -> [Tree (pred lty)]
+pSplit ps = pUnion (concatMap toList ps)
         where
-            pred (Tree x xs) = x
-            pred (Leaf x)    = x
+            toList (ProdTree x)  = [x]
+            toList (ProdList xs) = xs
+\end{code}
 
+This gives the desired result:
+
+\begin{run}
+       |*Main> pSplit [ex_prod1, ex_prod2]|
+\perform{lpp $ pSplit [ex_prod1, ex_prod2]}
+\end{run}
+
+
+These are the auxilary functions, we used above
+{\scriptsize
+\begin{code}
+-- compare the heads of trees for greater, less or equal
+onLabels :: Ord a => Tree a -> Tree a -> Ordering
+onLabels t1 t2  = compare (pred t1) (pred t2)
+  where
+    pred (Tree x xs) = x
+    pred (Leaf x)    = x
+
+-- compare the children of trees for greater, less or equal
 onChildren :: Ord t => Tree t -> Tree t -> Ordering
 onChildren (Tree x xs) (Tree y ys)  = compare xs ys
 onChildren (Leaf x) (Leaf y)        = EQ
 onChildren (Leaf x) _               = GT
 onChildren _ (Leaf x)               = LT
 
+-- compare head or children (whatever |on| is) for equality
 same on  x y = (on x y) == EQ
+\end{code}
 
+\begin{code}
+mergeLabels :: (IPredicate pred, Eq (pred lty), Eq lty) =>
+               [Tree (pred lty)] -> (Tree (pred lty))
+mergeLabels (x:xs) = foldr f x xs
+  where
+    f (Tree x xs) (Tree y ys)
+      | xs == ys = Tree (prOr x y) xs
+      | otherwise = error "Cannot merge, children don't match"
 
-pUnion :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
-          [Tree (pred lty)] -> [Tree (pred lty)]
-pUnion ts = concat $ L.groupBy (same onChildren) $ L.sortBy onChildren ts
-        where
+mergeChildren :: (IPredicate pred, Eq (pred lty), Eq lty) =>
+               [Tree (pred lty)] -> (Tree (pred lty))
+mergeChildren (x:xs) = foldr f x xs
+  where
+    f (Tree x xs) (Tree y ys)
+      | x == y = Tree x (xs ++ ys)
+      | otherwise = error "Cannot merge, heads don't match"
+\end{code}
+}
 
+\subsection{Merge / Restrict}
+\begin{figure}[H]
+\centering
+\includegraphics[width=5cm]{ProductsMerge.eps}
+\end{figure}
 
-xxx ts = L.groupBy (same onChildren) $ L.sortBy onChildren ts
-xxy ts = L.groupBy (same onHead) $ L.sortBy onHead ts
+A simple, unconditional |Merge| simply reproduces its output product
+on all its inputs, i.e. whatever its downstream process accepts is
+accepted from all its inputs. In that respect |Merge| does not
+transform Products, it does nothing at all.
 
-pSplit' :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
-           [Product (pred lty)] -> [Tree (pred lty)]
-pSplit' ps = sweepLbls $ sweepContents $ concatMap toList ps
-        where
-            toList (ProdTree t)  = [t]
-            toList (ProdList ts) = ts
-            cmpLbl (Tree a as) (Tree b bs) = compare a b
-            eqLbl (Tree a as) (Tree b bs) = a == b
-            mergeLbls [] = []
-            mergeLbls (Tree pred ts :xs) = undefined
-            sweepLbls = undefined
-            sweepContents = undefined
-                
+However, you may want to accept only a subset (e.g. priority mail) of
+all acceptable things from one particular input and another subset
+(e.g ordinary mail) from another.
 
+Now the question is: is it really the Merge process who decides that?
+It appears that these kind of restrictions are really first-class
+transformations, and that they are not really tied to a Merge Process.
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=5cm]{ProductsRestrict.eps}
+\caption{Restrict}
+\end{figure}
+
+So instead of |pMerge| we really need a |pRestrict|
+transformation. Now, real-world restrict operations only check the
+outermost labels and do not look inside containers. Checking outermost
+labels is something an |IPredicate| does, so the function we need
+looks like this:
+
+\begin{code}
+pRestrict :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
+             (pred lty) -> Product (pred lty) -> Product (pred lty)
 \end{code}
 
 
-%\begin{figure}[htb!]
+\begin{code}
+pRestrict pred prod =
+  case prod of
+    ProdTree tree  -> ProdTree $ restrict pred tree
+    ProdList trees -> ProdList $ filter notNone $ map (restrict pred) trees
+    where
+      restrict pred (Tree x xs) = let pred' = prAnd pred x
+                                  in if (pred' == prNone)
+                                     then Tree prNone []
+                                     else  Tree (prAnd pred x) xs
+      notNone (Tree x xs) = x /= prNone
+
+\end{code}
+
+Remember the Product we created with the Unpack process and which accepted two labels?
+
+\begin{code}
+ex_prod3 = ProdTree (pUnpack ex_container1 ex_plist1)
+\end{code}
+
+It looks like this:
+
+\begin{run}
+     |*Main> ex_prod3|\\
+\perform{lpp ex_prod3}
+\end{run}
+
+\needspace{20em}
+We can now restrict this product to a particular outermost label
+
+\begin{run}
+       |*Main> pRestrict (Labels ["Tray-BBZ1"]) ex_prod3|\\
+\perform{lpp $ pRestrict (Labels ["Tray-BBZ1"]) ex_prod3}
+\end{run}
+
+Sometimes nothing is left over
+
+\begin{run}
+     |*Main> pRestrict (Labels ["punk"]) ex_prod3|\\
+\perform{lpp $ pRestrict (Labels ["punk"]) ex_prod3}
+
+\end{run}
+
+
+%\begin{figure}[H]
 %\centering
 %\includegraphics[width=4cm]{glass-slipper.jpg}
 %\end{figure}

@@ -3,17 +3,17 @@ digraph d {
 	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
 
 	rankdir=LR
-	subgraph list {
-		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
-		xi [label="[xi]"]
-		yi1 [label="[yi1]"]
-		yi2 [label="[yi1]"]
+	subgraph product {
+		node [shape=Mcircle, style=filled, fillcolor="#DDFFDD", fixedsize=true, width=0.6]
+		xi [label="xi"]
+		yi1 [label="xi"]
+		yi2 [label="xi"]
 		}
 	subgraph process {
 		node [shape=box, style=rounded]
 		M
 	}
-yi1 -> M [label="p1"]
-yi2 -> M [label="p2"]
+yi1 -> M 
+yi2 -> M 
 M -> xi
 }
