@@ -5,8 +5,6 @@ digraph d {
 	rankdir=LR
 	subgraph product {
 		node [shape=Mcircle, style=filled, fillcolor="#DDFFDD", fixedsize=true, width=0.4]
-		px
-		py
 		}
 	subgraph process {
 		node [shape=box, style=rounded]
@@ -16,6 +14,12 @@ digraph d {
 		node [shape=box, style=invis]
 		pred
 	}
+	subgraph nest {
+		node [shape=invtrapezium, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.8]
+		px
+		py
+	}		
+
 {rank=same; pred restrict}	
 py -> restrict -> px
 pred->restrict[label="pred  ", color=blue, penwidth=1, arrowhead=open]

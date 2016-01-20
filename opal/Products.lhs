@@ -106,7 +106,7 @@ lpp a = do
 
 \subsection{Items}
 
-Mail items can be letters, parcels, trays, roll-containers, truck and
+Mail items can be letters, parcels, trays, roll-containers, trucks and
 many more. It appears like some of them are containers and others are
 \emph{atomic}. However, emphasizing the distinction between containers
 and atomic items turned out to be misleading, primarily because this
@@ -136,27 +136,33 @@ characterized by Format, Class and Destination or by anything else.
 
 So an item with a certain type of Label |lty| is either
 \begin{description}
-\item[a nested item], i.e. one where we know what's inside. Such an
-item is characterized by its own label and the items contained in it.
-\item[a nonempty item], i.e. one where we don't know what's inside and
-which is characterized by its own label only.
+\item[an item with known content]. Such an item is characterized by
+  its own label and the items contained in it.
+\item[an item with unknown content] (``nonempty item''), which is
+  characterized by its own label only.
 \end{description}
 
-A nested Item is obviously a Tree, whereas a nonempty Item is a leaf
-in that Tree. A leaf stands for an Item whose content is unknown, not
-for an empty container. We known precisely what's inside an empty
+A nested Item is obviously some kind of Tree, and a nonempty Item is a
+leaf in that Tree. A leaf stands for an Item whose content is unknown,
+not for an empty container. We known precisely what's inside an empty
 container, namely nothing.
 
 These considerations lead to the following definition:
 \begin{code}
 
 data Tree a = Leaf a | 
-              Tree a [Tree a]
+              Node a [Tree a]
               deriving (Eq, Ord, Show) 
 
 type Item lty = Tree lty
-
 \end{code}
+
+\begin{note}
+Items with unknown content are Leaves in a Tree. Items with known
+content are Nodes in a Tree.
+\end{note}
+
+
 
 Note that the label-type |lty| must be general enough to describe all
 labels in our universe. We cannot e.g. define seperate label types for
@@ -178,15 +184,16 @@ predicate over anything which can be compared for equality.
 \begin{code}
 class IPredicate p where
   prSat          :: (Eq a) => p a -> a -> Bool
+
   prShow         :: (Show a) => p a -> String
   prAnd          :: (Eq a) => p a -> p a -> p a
   prOr           :: (Eq a) => p a -> p a -> p a
   prAny          :: p a
-  prNone          :: p a
+  prNone         :: p a
 \end{code}
 
-You see, we asked for a number of other things besides |prSat|. This
-is best understood by examining what |SOP|, the
+You see, we asked for a number of other things besides ther main
+function |prSat|. This is best understood by examining what |SOP|, the
 Sortcode-range-building component in ADM-SPM does. \emph{All} that SOP
 does is to manipulate such simple predicates. It has no concept of
 nested items. But it has a concept of printing the results of such
@@ -244,12 +251,12 @@ emphasizes a collection of possibilities. So we need to combine
 predicates in two ways: as a |Tree| or as a list of |Trees|
 
 \begin{note}
-A Product specifies either
+A Product describes either
 \begin{itemize}
-\item what container-labels are accepted and what can be in the
-  container. This is a |Tree| of predicates
-\item that there are seveal options for container labels, each with a
-  different permissible content.
+\item a container, i.e. what container-labels are accepted and what
+  can be in the container. This is a |Tree| of predicates
+\item a choice between containers. This is a |List| of containers,
+  i.e. a List of Trees.
 \end{itemize}
 \end{note}
 So:
@@ -259,17 +266,24 @@ data Product pred = ProdTree (Tree pred) |
                     ProdList [Tree pred]
                     deriving (Show)
 \end{code}
-\begin{note}
-We will mostly be dealing with |(Tree pred)| and |[Tree pred]|
-datatypes. The notion of a |Product| just packs these two under a
-union-type. Many operations only accept one of the two |Product|
-variants.
-\end{note}
 
+We can always extract a List from a Product, a |ProdTree| then turns
+into a List with one element.
 
-Finally we need a suitable encoding for a predicate on labels. We need
-a way to check if a labels matches certain conditions. The most simple
-implementation is just a list of possible labels.
+\begin{code}
+prodToList (ProdTree x)  = [x]
+prodToList (ProdList xs) = xs
+\end{code}
+
+And we can always extract a "head" from a Tree no matter if we get a
+|Node| or a |Leaf|. The head is the predicate on labels.
+\begin{code}
+treeHead (Node x xs) = x
+treeHead (Leaf x)    = x
+\end{code}
+
+Finally we need a suitable encoding for a predicate on labels. The
+most simple implementation is just a list of possible labels.
 
 \begin{code}
 data Labels lty = Labels [lty] | AnyLabel
@@ -300,7 +314,7 @@ instance IPredicate Labels where
 
 In order to convince ourselves that |Product| satisfies the
 constraints defined in |IProduct|, we'll now implement |accepts|. We
-start by implementing accept functions for Trees and list of Trees
+start by implementing accept functions for Trees and Lists of Trees
 separately.
 
 \begin{code}
@@ -314,12 +328,11 @@ lAccepts prods item = any (flip tAccepts $ item) prods
 -- Is item accepted by a single Product-Leaf?
 tAccepts :: (IPredicate pred, Eq lty) => 
             Tree (pred lty) -> Item lty -> Bool
-tAccepts (Leaf pred) (Leaf lbl)         = prSat pred lbl
-tAccepts (Leaf pred) (Tree lbl _ )      = prSat pred lbl
-tAccepts (Tree pred _) (Leaf lbl)       = False -- don't know what's inside 
-tAccepts (Tree pred ls) (Tree lbl lbls) = prSat pred lbl &&
+tAccepts (Node pred ls) (Node ilbl items) = prSat pred ilbl &&
                                           -- all items inside must be accepted
-                                          all (lAccepts ls) lbls
+                                          all (lAccepts ls) items
+tAccepts (Leaf pred) item                 = prSat pred (treeHead item)
+tAccepts (Node pred _) (Leaf _)           = False -- don't know what's inside 
 
 \end{code}
 
@@ -341,36 +354,32 @@ Let's define a |ProdList| with toplevel Labels "foo" and "bar", where
 contain nothing at all. 
 
 \begin{code}
-ex_foo1 =  Tree (Labels ["foo"])
-          [
-            Leaf (Labels ["foo1","foo2"])
-          ]
-
-ex_bar1 =  Tree (Labels ["bar"]) []
-
--- The whole Product is a |ProdList|.
-ex_plist1 = [ex_foo1, ex_bar1]
+ex_plist1 = 
+           [ Node (Labels [ "foo" ]) [ Leaf (Labels [ "foo1" , "foo2" ]) ],
+             Node (Labels [ "bar" ]) []
+           ]
 ex_prod1 = ProdList ex_plist1
+
 \end{code}
 
 
 \medskip
 \begin{run}
 We don't accept a nonempty "foo", because we only allow "foo1" or
-"foo2" inside, but we don't know what's inside ``foo''.
+"foo2" inside, but we don't know what's inside the nonempty ``foo''.
 
 |*Main> accepts ex_prod1 (Leaf "foo")|\\
   \eval{accepts ex_prod1 (Leaf "foo")}
 
 However, a "foo" with a "foo1" inside is accepted.
 
-|*Main> accepts ex_prod1 (Tree "foo" [Leaf "foo1"])|\\
-  \eval{accepts ex_prod1 (Tree "foo" [Leaf "foo1"])}
+|*Main> accepts ex_prod1 (Node "foo" [Leaf "foo1"])|\\
+  \eval{accepts ex_prod1 (Node "foo" [Leaf "foo1"])}
 
-But not when it also cotnains a "lint"
+But not when it also contains a "lint"
 
-|*Main> accepts ex_prod1 (Tree "foo" [Leaf "foo1", Leaf "lint"])|\\
-  \eval{accepts ex_prod1 (Tree "foo" [Leaf "foo1", Leaf "lint"])}
+|*Main> accepts ex_prod1 (Node "foo" [Leaf "foo1", Leaf "lint"])|\\
+  \eval{accepts ex_prod1 (Node "foo" [Leaf "foo1", Leaf "lint"])}
 \end{run}
 
 
@@ -378,13 +387,13 @@ But not when it also cotnains a "lint"
 \begin{run}
 An empty "foo" is accepted too
 
-|*Main> accepts ex_prod1 (Tree "foo" [])|\\
-  \eval{accepts ex_prod1 (Tree "foo" [])}
+|*Main> accepts ex_prod1 (Node "foo" [])|\\
+  \eval{accepts ex_prod1 (Node "foo" [])}
 
 And so is an empty "bar"
 
-|*Main> accepts ex_prod1 (Tree "bar" [])|\\
-  \eval{accepts ex_prod1 (Tree "bar" [])}
+|*Main> accepts ex_prod1 (Node "bar" [])|\\
+  \eval{accepts ex_prod1 (Node "bar" [])}
 
 But a nonempty "bar is not, because "bar" must be empty
 
@@ -432,7 +441,7 @@ assume that Products are defined irrespective of Time and
 Place\footnote{It would be interesting to see, where we end up when we
 make Time and Place part of Sorting Products}.
 
-You may be tempted to believe that these Procersses can be combined in
+You may be tempted to believe that these Processes can be combined in
 an arbitrary way. But this is not the case. Also, there are cases
 where it is not possible to compute input Products from output
 Products alone.
@@ -449,7 +458,7 @@ We use different symbols for Processes, Trees, Lists and Products:
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=1.5cm]{ProductsSymbols.eps}
+\includegraphics[width=4cm]{ProductsSymbols.eps}
 \caption{Symbols}
 \end{figure}
 
@@ -475,9 +484,9 @@ to accept \emph{less} content than its downstream processes, but that
 is better handled by a dedicated operation and kept outside of mere
 unpacking.}.
 
-The container will in most cases be fully described by its label. This
-is true if we know that the container must be empty once unpacked. But
-in full generality, this is not the case.
+The container will sometimes be fully described by its label. This is
+true if we know that the container must be empty once unpacked. But in
+full generality, this is not the case.
 
 \begin{note}
 
@@ -488,15 +497,15 @@ ask the container to be empty once unpacked, but it does not have to.
 \end{note}
 
 \begin{code}
-pUnpack :: (IPredicate pred, Eq lty) =>
+pUnpack :: (IPredicate pred, Eq lty, Eq (pred lty)) =>
            Tree (pred lty) -> [Tree (pred lty)] -> Tree (pred lty)
-pUnpack (Tree cntLblP cntCont) trees = Tree cntLblP (cntCont ++ trees)
--- When anything can be in the container ...
-pUnpack (Leaf cntLblP) _ = Leaf cntLblP 
+pUnpack container content = 
+        case container of
+            Node cLabel cContent -> Node cLabel (L.union cContent content)
+            Leaf cLabel          -> Leaf cLabel
 
-
--- example
-ex_container1 = Tree (Labels ["Tray-BBZ1","Bag-BBZ1"])
+-- Example container:
+ex_container1 = Node (Labels ["Tray-BBZ1","Bag-BBZ1"])
                      [Leaf (Labels ["lint"])]
 \end{code}
 
@@ -525,13 +534,13 @@ In the example from the Unpack process, a Pack process could use
 containers labeled |Tray-BBZ1| or |Bag-BBZ1|. Without further
 information, we cannot decide which of the two to use. 
 
-Most of the time, it may accept only empty containers, but nothing bad
-will happen, if the container already contains something, provided
-that its content is accepted by the downstream process. So a Pack
-process does have a certain choice. In full generality, it can accept
-content both as to-be-packed new material and as material which is
-already in the container. Note that an empty container will always be
-accepted if it has the right label.
+Often, it may accept only empty containers, but nothing bad will
+happen, if the container already contains something, provided that its
+content is accepted by the downstream process. So a Pack process does
+have a certain choice. In full generality, it can accept content both
+as to-be-packed new material and as material which is already in the
+container. Note that an empty container will always be accepted if it
+has the right label.
 
 \begin{note}
 A |Pack| process adds content to a container. It computes an "item
@@ -541,21 +550,20 @@ have to be empty.
 
 \begin{code}
 pPack :: (IPredicate pred, Eq lty) =>
-         Tree (pred lty)  -> ([Tree (pred lty)], Tree (pred lty))
-pPack (Tree cntLblP cntCont) = (cntCont, container)
-  where
-    container = Tree cntLblP cntCont
+         Tree (pred lty)  -> (Tree (pred lty), [Tree (pred lty)])
+pPack (Node cLabel cContent) = (Node cLabel cContent, cContent)
 -- unspecified content - not very useful:
-pPack (Leaf cntLblP) = ([Leaf prAny], Leaf cntLblP)
+pPack (Leaf cLabel) = (Leaf cLabel, [Leaf prAny])
 
 -- from the example above
 ex_container2 = pUnpack ex_container1 ex_plist1
 \end{code}
 
-This example shows, what a Pack process accepts. The top part is the
-actual content and the bottom part is the container. Note that the
-container may be pre-filled with the same content that can be added to
-it.
+\needspace{22em}
+The following example shows, what a Pack process accepts, whose output
+is |ex_container2|. The top part is the actual content and the bottom
+part is the container. Note that the container may be pre-filled with
+the same content that can be added to it.
 
 \begin{run}
        |*Main> pPack $ ex_container2|
@@ -579,10 +587,7 @@ build the union over all the output products.
 \begin{code}
 pSplit' :: (IPredicate pred, Eq lty, Eq (pred lty)) => 
           [Product (pred lty)] -> [Tree (pred lty)]
-pSplit' ps = foldr L.union [] (map toList ps)
-        where
-            toList (ProdTree x)  = [x]
-            toList (ProdList xs) = xs
+pSplit' ps = foldr L.union [] (map prodToList ps)
 \end{code}
 
 This is a somewhat crude implementation, because with our example
@@ -591,8 +596,8 @@ Product from earlier and this additional Product:
 \begin{code}
 ex_prod2 = ProdList
   [
-    Tree (Labels [ "xxx" ]) [ Leaf (Labels [ "foo1" , "foo2" ]) ],
-    Tree (Labels [ "bar" ]) [ Leaf (Labels [ "bar1" ]) ]
+    Node (Labels [ "xxx" ]) [ Leaf (Labels [ "foo1" , "foo2" ]) ],
+    Node (Labels [ "bar" ]) [ Leaf (Labels [ "bar1" ]) ]
   ]
 
 \end{code}
@@ -613,31 +618,66 @@ only the second "bar" Product is needed, as it allows a "bar" to
 contain a "bar1", which always includes an empty "bar".
 
 To do better than that we need a smarter union operation. We do this
-as follows: we group a list of Trees into groups with matching
-children and merge the label-predicates using the function |prOr|. We
+as follows: we group a list of Trees into groups with matching content
+and merge \emph{the label-predicates} using the function |prOr|. We
 also group a list of Trees into groups with matching label-predicates
-and merge the children by concatenating the lists, using |++|. Each
-operation returns a list of trees, so we can run one after the other.
+and merge \emph{the contents} by concatenating the lists, using
+List.union. Each operation returns a list of trees, so we can run one
+after the other in any order.
 
 \needspace{12em}
 So we get:
 \begin{code}
 pUnion :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
           [Tree (pred lty)] -> [Tree (pred lty)]
-pUnion = (childSweep . labelSweep)
+pUnion = (contentSweep . labelSweep)
   where
-    labelSweep = map mergeLabels   . groupTrees onChildren
-    childSweep = map mergeChildren . groupTrees onLabels
-    groupTrees onWhat = L.groupBy (same onWhat) . L.sortBy onWhat
+    labelSweep   = map mergeLabels  . groupTrees onContent
+    contentSweep = map mergeContent . groupTrees onLabels
+    groupTrees onWhat = L.groupBy (equals onWhat) . L.sortBy onWhat
 
 pSplit :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
           [Product (pred lty)] -> [Tree (pred lty)]
-pSplit ps = pUnion (concatMap toList ps)
-        where
-            toList (ProdTree x)  = [x]
-            toList (ProdList xs) = xs
+pSplit ps = pUnion (concatMap prodToList ps)
 \end{code}
 
+\bigskip
+These are the auxilary functions, we used above
+{\scriptsize
+\begin{code}
+-- compare the heads or content of trees for greater, less or equal
+onLabels :: Ord a => Tree a -> Tree a -> Ordering
+onLabels t1 t2  = compare (treeHead t1) (treeHead t2)
+
+-- compare the content of trees for greater, less or equal
+onContent :: Ord t => Tree t -> Tree t -> Ordering
+onContent (Node x xs) (Node y ys)  = compare xs ys
+onContent (Leaf x) (Leaf y)        = EQ
+onContent (Leaf x) _               = GT
+onContent _ (Leaf x)               = LT
+
+-- compare head or content (whatever |onWhat| is) for equality
+equals onWhat  x y = (onWhat x y) == EQ
+\end{code}
+
+\begin{code}
+mergeLabels :: (IPredicate pred, Eq (pred lty), Eq lty)=> [Tree (pred lty)] -> (Tree (pred lty))
+mergeLabels (x:xs) = foldr f x xs
+  where
+    f (Node x xs) (Node y ys)
+      | xs == ys = Node (prOr x y) xs
+      | otherwise = error "Cannot merge, content doesn't match"
+
+mergeContent :: (IPredicate pred, Eq (pred lty), Eq lty)=> [Tree (pred lty)] -> (Tree (pred lty))
+mergeContent (x:xs) = foldr f x xs
+  where
+    f (Node x xs) (Node y ys)
+      | x == y = Node x (L.union xs ys)
+      | otherwise = error "Cannot merge, heads don't match"
+\end{code}
+}
+
+\needspace{12em}
 This gives the desired result:
 
 \begin{run}
@@ -646,45 +686,6 @@ This gives the desired result:
 \end{run}
 
 
-These are the auxilary functions, we used above
-{\scriptsize
-\begin{code}
--- compare the heads of trees for greater, less or equal
-onLabels :: Ord a => Tree a -> Tree a -> Ordering
-onLabels t1 t2  = compare (pred t1) (pred t2)
-  where
-    pred (Tree x xs) = x
-    pred (Leaf x)    = x
-
--- compare the children of trees for greater, less or equal
-onChildren :: Ord t => Tree t -> Tree t -> Ordering
-onChildren (Tree x xs) (Tree y ys)  = compare xs ys
-onChildren (Leaf x) (Leaf y)        = EQ
-onChildren (Leaf x) _               = GT
-onChildren _ (Leaf x)               = LT
-
--- compare head or children (whatever |on| is) for equality
-same on  x y = (on x y) == EQ
-\end{code}
-
-\begin{code}
-mergeLabels :: (IPredicate pred, Eq (pred lty), Eq lty) =>
-               [Tree (pred lty)] -> (Tree (pred lty))
-mergeLabels (x:xs) = foldr f x xs
-  where
-    f (Tree x xs) (Tree y ys)
-      | xs == ys = Tree (prOr x y) xs
-      | otherwise = error "Cannot merge, children don't match"
-
-mergeChildren :: (IPredicate pred, Eq (pred lty), Eq lty) =>
-               [Tree (pred lty)] -> (Tree (pred lty))
-mergeChildren (x:xs) = foldr f x xs
-  where
-    f (Tree x xs) (Tree y ys)
-      | x == y = Tree x (xs ++ ys)
-      | otherwise = error "Cannot merge, heads don't match"
-\end{code}
-}
 
 \subsection{Merge / Restrict}
 \begin{figure}[H]
@@ -695,15 +696,15 @@ mergeChildren (x:xs) = foldr f x xs
 A simple, unconditional |Merge| simply reproduces its output product
 on all its inputs, i.e. whatever its downstream process accepts is
 accepted from all its inputs. In that respect |Merge| does not
-transform Products, it does nothing at all.
+transform Products at all. 
 
 However, you may want to accept only a subset (e.g. priority mail) of
 all acceptable things from one particular input and another subset
 (e.g ordinary mail) from another.
 
-Now the question is: is it really the Merge process who decides that?
-It appears that these kind of restrictions are really first-class
-transformations, and that they are not really tied to a Merge Process.
+But is it really the Merge process who decides that?  It appears that
+these kind of restrictions are really first-class transformations, and
+that they are not really tied to a Merge Process.
 
 \begin{figure}[H]
 \centering
@@ -714,57 +715,70 @@ transformations, and that they are not really tied to a Merge Process.
 So instead of |pMerge| we really need a |pRestrict|
 transformation. Now, real-world restrict operations only check the
 outermost labels and do not look inside containers. Checking outermost
-labels is something an |IPredicate| does, so the function we need
+labels is something an |IPredicate| does. So, the function we need
 looks like this:
 
 \begin{code}
 pRestrict :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
-             (pred lty) -> Product (pred lty) -> Product (pred lty)
+             (pred lty) -> Tree (pred lty) -> Tree (pred lty)
 \end{code}
 
 
 \begin{code}
-pRestrict pred prod =
-  case prod of
-    ProdTree tree  -> ProdTree $ restrict pred tree
-    ProdList trees -> ProdList $ filter notNone $ map (restrict pred) trees
-    where
-      restrict pred (Tree x xs) = let pred' = prAnd pred x
-                                  in if (pred' == prNone)
-                                     then Tree prNone []
-                                     else  Tree (prAnd pred x) xs
-      notNone (Tree x xs) = x /= prNone
+pRestrict pred (Node lbl content) = toNone $ Node (prAnd pred lbl) content
+        where
+            toNone (Node x xs) 
+                    | x == prNone = Leaf prNone
+                    | otherwise   = Node x xs
+
+pRestrict pred (Leaf lbl)         = Leaf (prAnd pred lbl) 
 
 \end{code}
 
-Remember the Product we created with the Unpack process and which accepted two labels?
+Remember the Tree we created with the Unpack process and which
+accepted two labels?
 
 \begin{code}
-ex_prod3 = ProdTree (pUnpack ex_container1 ex_plist1)
+ex_tree3 = pUnpack ex_container1 ex_plist1
 \end{code}
 
 It looks like this:
 
 \begin{run}
-     |*Main> ex_prod3|\\
-\perform{lpp ex_prod3}
+     |*Main> ex_tree3|\\
+\perform{lpp ex_tree3}
 \end{run}
 
 \needspace{20em}
 We can now restrict this product to a particular outermost label
 
 \begin{run}
-       |*Main> pRestrict (Labels ["Tray-BBZ1"]) ex_prod3|\\
-\perform{lpp $ pRestrict (Labels ["Tray-BBZ1"]) ex_prod3}
+       |*Main> pRestrict (Labels ["Tray-BBZ1"]) ex_tree3|\\
+\perform{lpp $ pRestrict (Labels ["Tray-BBZ1"]) ex_tree3}
 \end{run}
 
 Sometimes nothing is left over
 
 \begin{run}
-     |*Main> pRestrict (Labels ["punk"]) ex_prod3|\\
-\perform{lpp $ pRestrict (Labels ["punk"]) ex_prod3}
+     |*Main> pRestrict (Labels ["punk"]) ex_tree3|\\
+\perform{lpp $ pRestrict (Labels ["punk"]) ex_tree3}
 
 \end{run}
+
+
+There is however one restriction on content, which may be useful: We
+may demand that a container must be empty. This cannot be expressed via a
+predicate on lables anymore, but is a true function. Even when passed
+a |Leaf|, i.e. a container where we originally did not care what's
+inside, it returns a |Node|, because now we do care.
+
+\begin{code}
+restrictEmpty :: (IPredicate pred, Eq lty) => 
+                 Tree (pred lty) -> Tree (pred lty)
+restrictEmpty tree = Node (treeHead tree) []
+
+\end{code}
+
 
 
 %\begin{figure}[H]

@@ -1,6 +1,7 @@
 digraph d {
+	nodesep=0.7
 	node [fontname = "Arial"];
-	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
+	edge [fontname = "Arial", fontsize=11,color=black, penwidth=1.5, weight=1];
 
 	rankdir=LR
 	subgraph nest {
@@ -8,7 +9,7 @@ digraph d {
 		tree
 		}		
 	subgraph list {
-		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.8]
+		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
 		list
 		}
 	subgraph product {
@@ -20,4 +21,9 @@ digraph d {
 		node [shape=box, style=rounded]
 		process
 	}
+
+	{rank=same; list tree}
+	list -> product [arrowhead=onormal]
+	tree -> product [arrowhead=onormal]
+	tree -> list [arrowhead=odiamond, taillabel="* "]
 }
