@@ -85,6 +85,8 @@ import qualified Data.List as L
 import qualified Data.Set as S
 import Test.QuickCheck
 import Data.Maybe
+import Data.Function
+import Data.Ord
 import Text.Show.Pretty
 import Control.Arrow
 -- import Data.String.Utils
@@ -147,15 +149,15 @@ container, namely nothing.
 These considerations lead to the following definition:
 \begin{code}
 
-data Tree a = Leaf {treeLeaf::a} | 
-              Tree {treeHead:: a, treeChildren :: [Tree a]}
+data Tree a = Leaf a | 
+              Tree a [Tree a]
               deriving (Eq, Ord, Show) 
 
 type Item lty = Tree lty
 
 \end{code}
 
-Note that the label type |lty| must be general enough to describe all
+Note that the label-type |lty| must be general enough to describe all
 labels in our universe. We cannot e.g. define seperate label types for
 trays and letters. In practice, this is not a limitation, because
 different label types can always be united under one union-type.
@@ -176,8 +178,8 @@ predicate over anything which can be compared for equality.
 class IPredicate p where
   prSat          :: (Eq a) => p a -> a -> Bool
   prShow         :: (Show a) => p a -> String
-  prIntersection :: (Eq a) => p a -> p a -> Maybe (p a)
-  prUnion        :: (Eq a) => p a -> p a -> p a
+  prAnd          :: (Eq a) => p a -> p a -> Maybe (p a)
+  prOr           :: (Eq a) => p a -> p a -> p a
   prAny          :: p a
 \end{code}
 
@@ -187,7 +189,7 @@ Sortcode-range-building component in ADM-SPM does. \emph{All} that SOP
 does is to manipulate such simple predicates. It has no concept of
 nested items. But it has a concept of printing the results of such
 manipulations (|prShow|), otherwise we could not generate Sortplans,
-and it can build unions and do some other set operations.
+and it can do some boolean operations.
 
 SOP does this using a particular encoding for predicates, called
 |EXPANDS_TO|. Though we do not want to use such an encoding here, we
@@ -279,14 +281,14 @@ instance IPredicate Labels where
   prSat  AnyLabel _ = True
   prSat  (Labels lbls) lbl = lbl `L.elem` lbls
 
-  prIntersection AnyLabel y = Just y
-  prIntersection  (Labels lbls1) (Labels lbls2) =
+  prAnd AnyLabel y = Just y
+  prAnd  (Labels lbls1) (Labels lbls2) =
     case L.intersect lbls1 lbls2 of
       [] -> Nothing
       ys -> Just (Labels ys)
       
-  prUnion AnyLabel y = AnyLabel
-  prUnion (Labels lbls1) (Labels lbls2) =
+  prOr AnyLabel y = AnyLabel
+  prOr (Labels lbls1) (Labels lbls2) =
           Labels (L.union lbls1 lbls2)
   prShow = show
 
@@ -598,6 +600,30 @@ the second "bar" Product is needed, as it allows a "bar" to contain a
 
 
 \begin{code}
+
+onHead t1 t2  = compare (pred t1) (pred t2)
+        where
+            pred (Tree x xs) = x
+            pred (Leaf x)    = x
+
+onChildren :: Ord t => Tree t -> Tree t -> Ordering
+onChildren (Tree x xs) (Tree y ys)  = compare xs ys
+onChildren (Leaf x) (Leaf y)        = EQ
+onChildren (Leaf x) _               = GT
+onChildren _ (Leaf x)               = LT
+
+same on  x y = (on x y) == EQ
+
+
+pUnion :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
+          [Tree (pred lty)] -> [Tree (pred lty)]
+pUnion ts = concat $ L.groupBy (same onChildren) $ L.sortBy onChildren ts
+        where
+
+
+xxx ts = L.groupBy (same onChildren) $ L.sortBy onChildren ts
+xxy ts = L.groupBy (same onHead) $ L.sortBy onHead ts
+
 pSplit' :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
            [Product (pred lty)] -> [Tree (pred lty)]
 pSplit' ps = sweepLbls $ sweepContents $ concatMap toList ps

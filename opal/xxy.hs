@@ -10,7 +10,7 @@ type Item a = Tree a
 
 ------------------------------------------------------------
 class Predicate p where
-  prSat     :: (Eq a) => p a -> a -> Bool
+  prSat     :: (Ord a) => p a -> a -> Bool
   prAnd     :: (Eq a) => p a -> p a -> Maybe (p a)
   prOr     :: (Eq a) => p a -> p a -> p a
   prShow    :: (Show a) => p a -> String
@@ -31,18 +31,24 @@ instance Predicate LblList where
 
 data Product pred lty = Por [Tree (pred lty)] | Pnest (Tree (pred lty))
 
-instance Predicate (Product pred) where
-        prSat (Pnest (Node pred)) (Node lbl) = undefined
+data Ranges a = Ranges [(a,a)]
+instance Predicate Ranges where
+        prSat (Ranges rs) lbl = any (within lbl) rs
+                where within l (lo,hi) = l >=lo && l <= hi
+
+
+
+
 
 ------------------------------------------------------------  
 
-matches :: (Eq a) => (Predicate p) => Item a -> Tree (p a) -> Bool
+matches :: (Ord a) => (Predicate p) => Item a -> Tree (p a) -> Bool
 matches (Node i) (Node p) = prSat p i
 matches (Tree i is) (Node p) = prSat p i
 matches (Tree i is) (Tree p ps) = prSat p i &&
                                   all (flip matchesAny $ ps ) is
 
-matchesAny :: (Eq a, Predicate p) => Item a -> [Tree (p a)] -> Bool
+matchesAny :: (Ord a, Predicate p) => Item a -> [Tree (p a)] -> Bool
 matchesAny i ps = any (matches i) ps
 
 ------------------------------------------------------------
