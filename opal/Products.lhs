@@ -84,10 +84,11 @@ This paper attempts to formalize these transformations.
 {-# Language FlexibleInstances #-}
 import qualified Data.List as L
 import qualified Data.Set as S
+import qualified Data.Monoid as M
 import Test.QuickCheck
 import Data.Maybe
 import Data.Function
-import Data.Ord
+import qualified Data.Ord as O
 import Text.Show.Pretty
 import Control.Arrow
 -- import Data.String.Utils
@@ -152,9 +153,17 @@ These considerations lead to the following definition:
 
 data Tree a = Leaf a | 
               Node a [Tree a]
-              deriving (Eq, Ord, Show) 
+              deriving (Eq, Show) 
 
 type Item lty = Tree lty
+
+-- Trees can be ordered, Leafs are greater than anything
+instance (Ord t) => Ord (Tree t)
+  where
+    compare (Node x xs) (Node y ys)  = O.compare xs ys
+    compare (Leaf x) (Leaf y)        = EQ
+    compare (Leaf x) _               = GT
+    compare _ (Leaf x)               = LT
 \end{code}
 
 \begin{note}
@@ -288,6 +297,13 @@ most simple implementation is just a list of possible labels.
 \begin{code}
 data Labels lty = Labels [lty] | AnyLabel
                    deriving (Eq, Ord, Show)
+
+instance (Eq t) => M.Monoid (Labels t) where
+  mappend AnyLabel _ = AnyLabel
+  mappend _ AnyLabel = AnyLabel
+  mappend (Labels x) (Labels y) = Labels (L.union x y)
+  
+  mempty = Labels []
 \end{code}
 
 This is indeed a predicate, because we can implement all the functions
@@ -647,11 +663,11 @@ These are the auxilary functions, we used above
 \begin{code}
 -- compare the heads or content of trees for greater, less or equal
 onLabels :: Ord a => Tree a -> Tree a -> Ordering
-onLabels t1 t2  = compare (treeHead t1) (treeHead t2)
+onLabels t1 t2  = O.compare (treeHead t1) (treeHead t2)
 
 -- compare the content of trees for greater, less or equal
 onContent :: Ord t => Tree t -> Tree t -> Ordering
-onContent (Node x xs) (Node y ys)  = compare xs ys
+onContent (Node x xs) (Node y ys)  = O.compare xs ys
 onContent (Leaf x) (Leaf y)        = EQ
 onContent (Leaf x) _               = GT
 onContent _ (Leaf x)               = LT
