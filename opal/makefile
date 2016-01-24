@@ -43,7 +43,7 @@ clean:
 
 Products.pdf: Products.lhs ProductsRestrict.eps ProductsMerge.eps  ProductsSplit.eps \
 	ProductsSplitPack.eps ProductsPack.eps ProductsExRec.eps ProductsUnpack.eps  \
-	ProductsCombine.eps ProductsSymbols.eps ProductsRestrict.eps
+	ProductsCombine.eps ProductsSymbols.eps ProductsRestrict.eps Sop2.tex
 
 # ------------------------------------------------------------
 # verbatim files

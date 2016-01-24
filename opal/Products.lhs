@@ -4,6 +4,8 @@
 %options ghci -fglasgow-exts
 
 \usepackage{float}
+\usepackage{titlesec}
+\newcommand{\sectionbreak}{\clearpage}
 \usepackage{tikz}
 \usetikzlibrary{arrows,mindmap,backgrounds}
 \usepackage{fancyhdr}
@@ -32,7 +34,7 @@
 ]{note}
 
 \newmdenv[
-  frametitle=Example,
+  frametitle=Output:,
   backgroundcolor=white,
   topline=false,
   bottomline=false,
@@ -110,9 +112,9 @@ lpp a = do
 Mail items can be letters, parcels, trays, roll-containers, trucks and
 many more. It appears like some of them are containers and others are
 \emph{atomic}. However, emphasizing the distinction between containers
-and atomic items turned out to be misleading, primarily because this
-distinction lies in the eye of the beholder and is not a true property
-of a mail item.
+and atomic items is misleading, primarily because this distinction
+lies in the eye of the beholder and is not a true property of a mail
+item.
 
 For a parcel processing company a parcel appears like an atomic
 item. However, it is certainly a container and it does contain other
@@ -137,7 +139,7 @@ characterized by Format, Class and Destination or by anything else.
 
 So an item with a certain type of Label |lty| is either
 \begin{description}
-\item[an item with known content]. Such an item is characterized by
+\item[an item with known content.] Such an item is characterized by
   its own label and the items contained in it.
 \item[an item with unknown content] (``nonempty item''), which is
   characterized by its own label only.
@@ -161,7 +163,7 @@ type Item lty = Tree lty
 instance (Ord t) => Ord (Tree t)
   where
     compare (Node x xs) (Node y ys)  = O.compare xs ys
-    compare (Leaf x) (Leaf y)        = EQ
+    compare (Leaf x) (Leaf y)        = O.compare x y
     compare (Leaf x) _               = GT
     compare _ (Leaf x)               = LT
 \end{code}
@@ -185,10 +187,11 @@ Hence, at its heart, a Product is a function |Item lty -> Bool|.
 
 Now, something must be assumed about the ingredients a Product is
 built from. Our reasoning is as follows: somehow you must be able to
-test whether two labels are equal, otherwise it will be impossible to
-tell whether a nested thing like an Item matches some criteria. Since
-we want to leave the actual label-type unspecified, we settle for a
-predicate over anything which can be compared for equality.
+test whether a labels is equal to something, otherwise it will be
+impossible to tell whether a nested thing like an Item matches some
+criteria. Since we want to leave the actual label-type unspecified, we
+settle for a predicate over anything which can be compared for
+equality.
 
 \begin{code}
 class IPredicate p where
@@ -201,7 +204,7 @@ class IPredicate p where
   prNone         :: p a
 \end{code}
 
-You see, we asked for a number of other things besides ther main
+You see, we asked for a number of other things besides the main
 function |prSat|. This is best understood by examining what |SOP|, the
 Sortcode-range-building component in ADM-SPM does. \emph{All} that SOP
 does is to manipulate such simple predicates. It has no concept of
@@ -298,12 +301,6 @@ most simple implementation is just a list of possible labels.
 data Labels lty = Labels [lty] | AnyLabel
                    deriving (Eq, Ord, Show)
 
-instance (Eq t) => M.Monoid (Labels t) where
-  mappend AnyLabel _ = AnyLabel
-  mappend _ AnyLabel = AnyLabel
-  mappend (Labels x) (Labels y) = Labels (L.union x y)
-  
-  mempty = Labels []
 \end{code}
 
 This is indeed a predicate, because we can implement all the functions
@@ -328,6 +325,15 @@ instance IPredicate Labels where
 
 \end{code}
 
+Ans it it something, which can be appended to (a Monoid)
+\begin{code}
+instance (Eq t) => M.Monoid (Labels t) where
+  mappend AnyLabel _ = AnyLabel
+  mappend _ AnyLabel = AnyLabel
+  mappend (Labels x) (Labels y) = Labels (L.union x y)
+  
+  mempty = Labels []
+\end{code}
 In order to convince ourselves that |Product| satisfies the
 constraints defined in |IProduct|, we'll now implement |accepts|. We
 start by implementing accept functions for Trees and Lists of Trees
@@ -387,30 +393,31 @@ We don't accept a nonempty "foo", because we only allow "foo1" or
 |*Main> accepts ex_prod1 (Leaf "foo")|\\
   \eval{accepts ex_prod1 (Leaf "foo")}
 
+\needspace{10em}
 However, a "foo" with a "foo1" inside is accepted.
 
 |*Main> accepts ex_prod1 (Node "foo" [Leaf "foo1"])|\\
   \eval{accepts ex_prod1 (Node "foo" [Leaf "foo1"])}
 
+\needspace{10em}
 But not when it also contains a "lint"
 
 |*Main> accepts ex_prod1 (Node "foo" [Leaf "foo1", Leaf "lint"])|\\
   \eval{accepts ex_prod1 (Node "foo" [Leaf "foo1", Leaf "lint"])}
-\end{run}
 
-
-\medskip\needspace{12em}
-\begin{run}
+\needspace{10em}
 An empty "foo" is accepted too
 
 |*Main> accepts ex_prod1 (Node "foo" [])|\\
   \eval{accepts ex_prod1 (Node "foo" [])}
 
+\needspace{10em}
 And so is an empty "bar"
 
 |*Main> accepts ex_prod1 (Node "bar" [])|\\
   \eval{accepts ex_prod1 (Node "bar" [])}
 
+\needspace{10em}
 But a nonempty "bar is not, because "bar" must be empty
 
 |*Main> accepts ex_prod1 (Leaf "bar")|\\
@@ -458,9 +465,10 @@ Place\footnote{It would be interesting to see, where we end up when we
 make Time and Place part of Sorting Products}.
 
 You may be tempted to believe that these Processes can be combined in
-an arbitrary way. But this is not the case. Also, there are cases
-where it is not possible to compute input Products from output
-Products alone.
+arbitrary ways. But this is not the case. Also, there are cases where
+it is not possible to compute input Products from output Products
+alone. We shall try to define our types, so these things become
+obvious.
 
 We'll use diagrams to illustrate the processes.  The arrows in those
 diagrams point in the direction of the Item flow. The transformation
@@ -567,12 +575,12 @@ have to be empty.
 \begin{code}
 pPack :: (IPredicate pred, Eq lty) =>
          Tree (pred lty)  -> (Tree (pred lty), [Tree (pred lty)])
-pPack (Node cLabel cContent) = (Node cLabel cContent, cContent)
+pPack (Node cLabel cContent) = (container, items)
+        where
+            container = Node cLabel cContent
+            items     = cContent
 -- unspecified content - not very useful:
 pPack (Leaf cLabel) = (Leaf cLabel, [Leaf prAny])
-
--- from the example above
-ex_container2 = pUnpack ex_container1 ex_plist1
 \end{code}
 
 \needspace{22em}
@@ -580,6 +588,11 @@ The following example shows, what a Pack process accepts, whose output
 is |ex_container2|. The top part is the actual content and the bottom
 part is the container. Note that the container may be pre-filled with
 the same content that can be added to it.
+
+\begin{code}
+-- from the example above
+ex_container2 = pUnpack ex_container1 ex_plist1
+\end{code}
 
 \begin{run}
        |*Main> pPack $ ex_container2|
@@ -593,7 +606,7 @@ the same content that can be added to it.
 \caption{Split}
 \end{figure}
 
-A |Split| process accepts things, which are accepted by one of its
+A |Split| process accepts things, which are accepted by any of its
 outputs. Each output may accept either a |ProdTree| or a |ProdList|.
 
 
@@ -626,82 +639,51 @@ We get
 \perform{lpp $ pSplit' [ex_prod1, ex_prod2]}
 \end{run}
 
-The "foo" and "xxx" Product accept different labels, but accept the
-same content. Clearly those two should have been merged into
-one. Likewise the two "bar" products could be merged, as they accept
-the same labels and their contents could be merged into one. In fact,
-only the second "bar" Product is needed, as it allows a "bar" to
-contain a "bar1", which always includes an empty "bar".
+There is something to observe here: the "foo" and "xxx" Product
+accept different labels, but accept the same content. Those two should
+have been merged into one. Likewise the two "bar" products could be
+merged, as they accept the same labels and their contents could be
+merged into one. In fact, only the second "bar" Product is needed, as
+it allows a "bar" to contain a "bar1", which always includes an empty
+"bar".
 
-To do better than that we need a smarter union operation. We do this
-as follows: we group a list of Trees into groups with matching content
-and merge \emph{the label-predicates} using the function |prOr|. We
-also group a list of Trees into groups with matching label-predicates
-and merge \emph{the contents} by concatenating the lists, using
-List.union. Each operation returns a list of trees, so we can run one
-after the other in any order.
+To do better than that we need a smarter union operation. The core of
+the problem is the following: A |Tree| is a pair-like thing of two
+collections, as each node consists of a label-predicate and a
+collection of children.
 
-\needspace{12em}
-So we get:
-\begin{code}
-pUnion :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
-          [Tree (pred lty)] -> [Tree (pred lty)]
-pUnion = (contentSweep . labelSweep)
-  where
-    labelSweep   = map mergeLabels  . groupTrees onContent
-    contentSweep = map mergeContent . groupTrees onLabels
-    groupTrees onWhat = L.groupBy (equals onWhat) . L.sortBy onWhat
-
-pSplit :: (IPredicate pred, Ord lty, Ord (pred lty)) => 
-          [Product (pred lty)] -> [Tree (pred lty)]
-pSplit ps = pUnion (concatMap prodToList ps)
-\end{code}
-
-\bigskip
-These are the auxilary functions, we used above
-{\scriptsize
-\begin{code}
--- compare the heads or content of trees for greater, less or equal
-onLabels :: Ord a => Tree a -> Tree a -> Ordering
-onLabels t1 t2  = O.compare (treeHead t1) (treeHead t2)
-
--- compare the content of trees for greater, less or equal
-onContent :: Ord t => Tree t -> Tree t -> Ordering
-onContent (Node x xs) (Node y ys)  = O.compare xs ys
-onContent (Leaf x) (Leaf y)        = EQ
-onContent (Leaf x) _               = GT
-onContent _ (Leaf x)               = LT
-
--- compare head or content (whatever |onWhat| is) for equality
-equals onWhat  x y = (onWhat x y) == EQ
-\end{code}
+You could just as well list all the permissible combinations of
+permissible Labels and permissible content. This would be the
+cartesian product of the two collections. A Product would then have
+the type
 
 \begin{code}
-mergeLabels :: (IPredicate pred, Eq (pred lty), Eq lty)=> [Tree (pred lty)] -> (Tree (pred lty))
-mergeLabels (x:xs) = foldr f x xs
-  where
-    f (Node x xs) (Node y ys)
-      | xs == ys = Node (prOr x y) xs
-      | otherwise = error "Cannot merge, content doesn't match"
+data Product' lty = Product' lty (Product' lty)|
+                    Leaf' lty
 
-mergeContent :: (IPredicate pred, Eq (pred lty), Eq lty)=> [Tree (pred lty)] -> (Tree (pred lty))
-mergeContent (x:xs) = foldr f x xs
-  where
-    f (Node x xs) (Node y ys)
-      | x == y = Node x (L.union xs ys)
-      | otherwise = error "Cannot merge, heads don't match"
+type ProductList lty = [Product' lty]
 \end{code}
-}
 
-\needspace{12em}
-This gives the desired result:
+With real-world Products being |ProductLists|. However, |Product'| is
+basically just a linked list, i.e. it is equivalent to
 
-\begin{run}
-       |*Main> pSplit [ex_prod1, ex_prod2]|
-\perform{lpp $ pSplit [ex_prod1, ex_prod2]}
-\end{run}
+\begin{code}
+type ProductList'' lty = [[lty]]
+\end{code}
 
+This is an outer list of inner lists, where each inner list tells you,
+that if an item-label matches the head of the list, then all contained
+items must match the tail of the list. If that is not the case, you
+can try the next inner list until you exhausted the outer list.
 
+This is the same thing as saying: an item labeled |a| inside a
+container |b| inside a container |c| is accepted if the list |[c,b,a]|
+is one of the inner lists
+
+The outer list will in general be very large. To reduce its size, one
+must compress it one way or another and the redundant entries in our
+example were the result of suboptimal compression. There is a chapter
+in the Appendices which elaborates on this issue.
 
 \subsection{Merge / Restrict}
 \begin{figure}[H]
@@ -794,8 +776,9 @@ restrictEmpty :: (IPredicate pred, Eq lty) =>
 restrictEmpty tree = Node (treeHead tree) []
 
 \end{code}
-
-
+\newpage
+\section{Appendices} 
+\input{Sop2}
 
 %\begin{figure}[H]
 %\centering
