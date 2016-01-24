@@ -146,22 +146,22 @@ prop_commute xs = (pUncompressRight . pUncompressLeft)  xs ==
 \subsubsection{Compressing Lists}
 
 If we use the same label-type |tly| for all our items, we can express
-Products as Lists. The head of the list is a possible toplevel label,
-the tail of the list describes the premissible contents.
+Products as Lists, where ach element in that list is a label and the
+list as a whole describes one possible |Path| (of packings) to a depply
+nested item.
 
-So far this |Chain| is just one possible nesting of lables. To get a
-|Product| we need a List of these, to cater for all possible
+To get a |Product| we need a List of Paths, to cater for all possible
 combinations. So, a Product would be a List of such Lists.
 
 The compressed version of such a list contains elements we call
 |Grids|. A Grid is a List of Lists and the cartesian product of all
 these Lists gives us back part of the Product, i.e. a part that can be
-written as a cartesian products. In general a Product cannot be
+written as a cartesian product. In general a Product cannot be
 written as a single cartesian product, so to cater for any possible
 Product, we need a List of Grids.
 
 \begin{code}
-type Chain a = [a]
+type Path a = [a]
 type Grid a = [[a]] 
 \end{code}
 
@@ -169,7 +169,7 @@ Before we dive into compressing Products, let's first write the easier
 uncompress function, which is at its heart, just a cartesian product.
 
 \begin{code}
-lUncompGrid :: (Show a) => Grid a -> [Chain a]
+lUncompGrid :: (Show a) => Grid a -> [Path a]
 lUncompGrid [] = [[]]
 lUncompGrid (x:xs) = do
     a <- x               -- a  :: lbl
