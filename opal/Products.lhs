@@ -780,6 +780,19 @@ restrictEmpty tree = Node (treeHead tree) []
 \section{Appendices} 
 \input{Sop2}
 
+\section{To do}
+\begin{enumerate}
+\item Describe unpack with respect to split.
+\item Generalize aggegration. Currently this is a set of auxilary
+      functions in Split. It should work on all pair-like things.
+\item Implement ``priced'' Products, such that a sortplan can be
+      generated
+\item replace lists by sets where sequence is irrelevant and uniqueness is required
+\item demonstrate the use of ranges instead of lists/sets
+\item Provide a full real-world example
+\item consider using Paths to describe Products and Items
+\end{enumerate}
+
 %\begin{figure}[H]
 %\centering
 %\includegraphics[width=4cm]{glass-slipper.jpg}
