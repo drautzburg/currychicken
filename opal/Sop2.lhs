@@ -7,7 +7,7 @@ import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.Foldable as F
-import Data.Monoid
+import qualified Data.Monoid as Mon
 import qualified Data.Tuple as T
 import Text.Show.Pretty
 
@@ -205,6 +205,35 @@ ex_grids1 = [grid1, grid2]
 |*Main> lUncompress ex_grids1|
   \perform{lpp $ lUncompress ex_grids1}
 \end {run}
+
+
+\subsubsection{Processes}
+
+Experiments about Items and Products as Lists
+
+\begin{code}
+
+data Product a = Empty [a] | Nonempty ([a]->[a])                                                          
+
+-- pack Paths into container with known label
+-- ppack :: a -> [Path a] -> [Path a]
+ppack clbl p = map (clbl :) p
+
+fpack :: a -> ([a] -> [a]) -> ([a] -> [a])
+fpack clbl f = (clbl:) . f 
+
+fpackAll :: a -> [[a] -> [a]] -> [[a] -> [a]]
+fpackAll clbl fs = map (fpack clbl) fs
+
+ne as = (as ++)
+ex_nonempty = [
+ ne [1,2,3],
+ ne [4,5,6]
+ ]
+
+ex_1 = map ($ []) ((fpackAll 10 ) ex_nonempty)
+\end{code}
+
 
 xxx:
 \begin{code}
