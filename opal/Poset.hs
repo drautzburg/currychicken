@@ -18,7 +18,7 @@ the original Crust.
 import qualified Data.List as L
 import qualified Data.Set as S
 import Debug.Trace
-import Test.QuickCheck
+import Test.QuickCheck hiding ((==>))
 
 ------------------------------------------------------------
 class Poset p where
@@ -103,8 +103,18 @@ instance (Arbitrary a) => Arbitrary (Crust a)
                 xs <- arbitrary 
                 elements [Open xs, Closed xs]
 
+a ==> b = not a || b 
+infixr 1 ==>
+
 prop_reflexive :: Crust (PsAtom Int) -> Bool
 prop_reflexive as = as <: as
+
+prop_anti :: Crust (PsAtom Int) -> Crust (PsAtom Int) -> Bool
+prop_anti as bs = as <: bs && bs <: as ==> as == bs
+
+prop_trans :: Crust (PsAtom Int) -> Crust (PsAtom Int) -> Crust (PsAtom Int) -> Bool
+prop_trans as bs cs = as <: bs && bs <: cs ==> as <: cs
+
 
 onList f (Open as)   = Open   $ f as
 onList f (Closed as) = Closed $ f as
@@ -114,6 +124,15 @@ prop_subset a as bs
         | as <: bs = (trace "-- a --") $ as <: (onList (a:) bs)
         | bs <: as = (trace "-- b --") bs <: (onList (a:) as)
         | otherwise = True
+
+
+runTest name test = putStrLn "" >> putStrLn name >> quickCheck test
+
+testAll = do
+    runTest "reflexive" prop_reflexive
+    runTest "trans"     prop_trans
+    runTest "anti"      prop_anti
+
 
 
 
