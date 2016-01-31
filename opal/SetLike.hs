@@ -21,6 +21,9 @@ instance PartialOrder S.Set
         where
             (<:) = S.isSubsetOf
 
+-- xxx to compare products and items we must extract the relevant
+-- parts of the item label. We are comaring two different things:
+-- items and Products
 
 instance PartialOrder []
         where
@@ -84,6 +87,11 @@ instance   (F.Foldable ors, PartialOrder grp) =>  PartialOrder (Items ors grp)
                         anyMatch a b True = True
                         anyMatch a b False = a <: b
 
+
+-- Functor (Nested grp) 
+instance (PartialOrder grp, Functor ors, Functor grp) =>  Functor (Items ors grp)
+        where
+            fmap f (Items nests) = Items $ fmap (fmap f) nests
 
 
 equalsi :: (PartialOrder grp, F.Foldable ors, Ord a) => Items ors grp a -> Items ors grp a -> Bool
