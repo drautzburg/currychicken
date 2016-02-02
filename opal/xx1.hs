@@ -6,14 +6,17 @@ import qualified Data.Set as S
 import Debug.Trace
 import Test.QuickCheck hiding ((==>))
 
-
+------------------------------------------------------------
 data Nest lty = Nest [lty] deriving (Eq, Ord, Show)
+------------------------------------------------------------
 
 -- can implement element for Nest
 nElement :: (Eq lty) => Nest lty -> Nest lty -> Bool
 nElement = (==)
 
-data Cart lty = Cart [[lty]] deriving Show
+------------------------------------------------------------
+data Cart lty = Cart [[lty]] deriving (Eq, Ord, Show)
+------------------------------------------------------------
 
 -- can implement element for Cart
 cElement :: (Eq lty) => Nest lty -> Cart lty -> Bool
@@ -25,20 +28,24 @@ cElement _ _ = False
 singleCart :: Nest lty -> Cart lty
 singleCart (Nest lbls) = Cart (map return lbls)
 
+------------------------------------------------------------
 data Nitems lty = Nitems (S.Set (Nest lty)) deriving Show
-
+------------------------------------------------------------
 -- can put a single item into Nitems
 singleNitems :: Nest lty -> Nitems lty
 singleNitems (Nest lbls) = Nitems $ S.singleton $ Nest lbls
 
+------------------------------------------------------------
 data Citems lty = Citems (S.Set (Cart lty)) deriving Show
-
+------------------------------------------------------------
 -- can put a single item into Citems
 singleCitems :: Nest lty -> Citems lty
 singleCitems (Nest lbls) = Citems $ S.singleton $ singleCart $ Nest lbls
 
 
+------------------------------------------------------------
 class Container cnt where
+------------------------------------------------------------
   single :: Nest lty -> cnt lty
   elemt  :: (Eq lty, Ord lty) => Nest lty -> cnt lty -> Bool
 
