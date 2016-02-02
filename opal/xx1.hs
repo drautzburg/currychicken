@@ -5,65 +5,47 @@ import qualified Data.List as L
 import qualified Data.Set as S
 import Debug.Trace
 import Test.QuickCheck hiding ((==>))
+import Data.Ord
+
+ts x = trace (show x)
 
 ------------------------------------------------------------
-data Nest lty = Nest [lty] deriving (Eq, Ord, Show)
+class Set s where
 ------------------------------------------------------------
+        union :: (Ord a) => s a -> s a -> s a
+        inter :: (Ord a) => s a -> s a -> s a
+        singl :: a -> s a
 
--- can implement element for Nest
-nElement :: (Eq lty) => Nest lty -> Nest lty -> Bool
-nElement = (==)
 
-------------------------------------------------------------
-data Cart lty = Cart [[lty]] deriving (Eq, Ord, Show)
-------------------------------------------------------------
-
--- can implement element for Cart
-cElement :: (Eq lty) => Nest lty -> Cart lty -> Bool
-cElement (Nest []) (Cart cs) = cs == [] -- Closed
-cElement (Nest (l:ls)) (Cart (c:cs)) = l `elem` c && (Nest ls) `cElement` (Cart cs)
-cElement _ _ = False
-
--- can put a single item into a Cart
-singleCart :: Nest lty -> Cart lty
-singleCart (Nest lbls) = Cart (map return lbls)
+instance Set S.Set where
+        union = S.union
+        inter = S.intersection
+        singl = S.singleton
 
 ------------------------------------------------------------
-data Nitems lty = Nitems (S.Set (Nest lty)) deriving Show
+data Crust a = Open [a] | Closed [a] deriving (Show)
+-- xxx can do inter but not union or singl
 ------------------------------------------------------------
--- can put a single item into Nitems
-singleNitems :: Nest lty -> Nitems lty
-singleNitems (Nest lbls) = Nitems $ S.singleton $ Nest lbls
 
-------------------------------------------------------------
-data Citems lty = Citems (S.Set (Cart lty)) deriving Show
-------------------------------------------------------------
--- can put a single item into Citems
-singleCitems :: Nest lty -> Citems lty
-singleCitems (Nest lbls) = Citems $ S.singleton $ singleCart $ Nest lbls
+type Product set lty = set (Crust lty)
+
+
+
+ex_1 :: Product (S.Set) Int
+ex_1 = (singl $ Open [3, 1,2])
 
 
 ------------------------------------------------------------
-class Container cnt where
+data Sop a = Sop [(a, [a])] deriving Show
 ------------------------------------------------------------
-  single :: Nest lty -> cnt lty
-  elemt  :: (Eq lty, Ord lty) => Nest lty -> cnt lty -> Bool
+instance Set Sop where
+        singl x = Sop [(x,[])]
+        union (Sop xs) (Sop ys) = Sop (snd zs)
+                where
+                    zs = foldr f (head xx, []) xx
+                    f (a,as) ((b:bs), ys)
+                            | a == b = ((a, as++bs), ys)
 
-instance Container Nest   where
-  single = id
-  elemt  = (==)
-  
-instance Container Cart   where
-  single = singleCart
-  elemt  = cElement
 
-instance Container Nitems where
-  single = singleNitems
-  elemt  x (Nitems xs) = S.member x xs
+                    xx = L.sortBy (comparing fst) (xs ++ ys)
 
-instance Container Citems where
-  single = singleCitems
-  elemt x (Citems xs) = S.foldr f False xs
-    where
-      f cs False = x `cElement` cs
-      f _  True  = True

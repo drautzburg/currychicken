@@ -47,7 +47,7 @@ combine (b:bs) = do
         else return ((lo', hi'), (lo,hi):xs) -- close range
 
 
--- | Take a new Range ans split a RangeSet into three parts, such that
+-- | Take a new Range and split a RangeSet into three parts, such that
 -- only the middle part has a change of being affected by the new
 -- range
 splitRanges :: (Ord b, Show b) => RangeSet b -> (b, b) -> (RangeSet b, [(b,b)] , RangeSet b)
