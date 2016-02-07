@@ -2,6 +2,7 @@
 %include lhs2TeX.fmt
 %include greek.fmt
 %options ghci -fglasgow-exts
+%format union = unio n
 
 \usepackage{float}
 \usepackage{titlesec}
@@ -87,10 +88,13 @@ This paper attempts to formalize these transformations.
 {-# Language FlexibleContexts #-}
 {-# Language StandaloneDeriving #-}
 {-# Language UndecidableInstances #-}
+{-# Language RankNTypes #-}
+{-# Language ConstraintKinds #-}
 
 import qualified Data.List as L
 import qualified Data.Set as S
-import qualified Data.Monoid as M
+import Data.Monoid hiding(Product)
+import Data.Ord
 import qualified Data.Foldable as F
 import Test.QuickCheck
 import Data.Maybe
@@ -115,7 +119,7 @@ lpp a = do
 \subsection{Items}
 
 Mail items can be letters, parcels, trays, roll-containers, trucks and
-many more. They are described by two features
+many more. They are described by three features
 
 \begin{description}
 \item[The item label] which in our world describes everything we need
@@ -124,6 +128,8 @@ many more. They are described by two features
 \item[Containment information], i.e. information about what other
   items are contained in an item, or alternatively in which item a
   given item is currently contained.
+\item[Choice], i.e. the fact that more than one item lies in the
+  focus, or that more than one item is acceptable.
 \end{description}
 
 In the real world almost everything contains something else, so the
@@ -132,13 +138,13 @@ reach a point, where we no longer care about containment. A parcel is
 certainly a container and it does contain other items, however, a
 parcel processing company will not care about what is in the parcel.
 
-There are however cases, where we don't hit a ``don't care'' situation
-when we look deeper and deeper into containers. The only situation I
-can think of, is that eventually we expect items to be completely
-empty. If we can model this correctly, we are not only able to reason
-about empty containers, but also about emopty containers being
-contained in bigger (then nonempty) containers.
+The only situation I can think of, where this chain of containemnt
+ends, is that eventually we expect items to be completely empty. If we
+can model this correctly, we are not only able to reason about empty
+containers, but also about empty containers being contained in bigger
+(then nonempty) containers.
 
+\needspace{22em}
 \subsubsection{Item labels}
 \begin{note}
 The label stands for everything we need to now about the item,
@@ -162,17 +168,18 @@ There are two ways to model containment:
 \begin{description}
 \item[outside-in] means describing an item by its label and what other
   items it contains.
-\item[inside-out] means describing an item by its label and what other
-  items it is \emph{contained in}.
+\item[inside-out] means describing an item by its label, the label of
+  its container and so forth.
 \end{description}
 
-We chose the second approach for reasons I cannot fully explain, say
-it was a gut-feeling. Grouping items which are inside the same
-container seems like a subsequent operation and this grouping should
-not be part of the |Item| data type as such. Doing it inside-out
-seemed more \emph{fundamental} to me.
+We chose the second approach for reasons I cannot fully explain. The
+outside-in approach does not allow to model a single item, once it is
+in a container with other items, while the inside-out approach has no
+difficulties with this. Hence, doing it inside-out seemed more
+\emph{fundamental} to me.
 
-To describe containment outside-in, we basically need a list, where
+
+To describe containment inside-out, we basically need a list, where
 |[1,2,3]| would describe an item, labeled |3| inside an item, labeled
 |2| inside an item, labeled |1|. 
 
@@ -181,134 +188,189 @@ or if we just don't know what's inside. We call this the |Ending| of
 the containment and there are exactly two options:
 
 \begin{code}
-data Ending = Open | Closed deriving (Eq, Show)
+data Ending = Open | Closed 
+              deriving (Eq, Show)
 \end{code}
 
 Where |Open| means that we don't know or care what's inside and
 |Closed| means that the containment is fully described, i.e. item |3|
 contains no further items.
 
-\subsubsection{Compression}
+\begin{note}
+We know precisely what is inside an empty container, namely nothing.
+\end{note}
 
-There is a third aspect, which has something to do with the
-representation of items and e.g. the way |SOP| encodes items. When
-there are several option at each level of nesting, describing a set of
-Items is like computing the cartesian product of all those options. If
-e.g. we have containers labeled 1,2 or 3 each containing items labeled
-10,11 or 12, then the whole set of items contains 9 entries. This is
-somehwat wasteful and blurrs the nature of this set of items.
 
-So instead of encoding an item as a list of labels, we encode items as
-a list of list-of-labels. The item above could then be written as 
-
-|Open [[1,2,3], [10,11,12]]|
-
-Now the containment information is clearly a list, because the
-ordering of elements is significant. However, the inner lists, which
-describe the various options for a label in that position just have to
-be set-like. This:
-
-|Open [[3,2,1], [11,11,10]]|
-
-describes exactly the same items as before, whereas this:
-
-|Open [[10,11,12], [1,2,3]]|
-
-swaps containers and content, which is a totally different set of
-items.
-
-\subsubsection{The Items data type}
-
-If we put all these considerations together, we end up with a
-definition for a set of items, which can be described by a cartesian
-product.
+A single, potentially "wrapped" item is then described by a list of
+labels, plus this ending indicator.
 
 \begin{code}
-data Nested grp lty = Nested Ending [grp lty] 
-                 deriving (Eq, Show)
+data Wrapped lty = Wrapped Ending [lty] 
+                   deriving (Eq, Show)
 \end{code}
 
-So a |Nested| is something which has an |Ending| and otherwise
-consists of a List of groups-of-labels. The list expresses the
-containment information, with the head of the list being the outermost
-item. Here |grp| stands for anything set-like, which we use to express
-groups of labels.
+A |Wrapped| can already describe a Set, because
 
-In general a set of Items cannot be described in this fashion
-alone. Not everything can be written as a cartesian product. So we
-need another level of manyfication, such that we can say a set of
-Items is a set of |Nested|. Again we are free to chose the
-representation of |set| and it does not have to be the same
-representation we used to describe alternative labels. We call this
-second manyfication |ors| as it desribes an |or| condition.
+\begin{itemize}
+\item The label information may not reflect all information on the
+  physical item of an item. Particularly we may not include the
+  item|Id|. Thus a single |Wrapped| may stand for many physical items.
+\item In |Open| Wrapped we do not know what's inside the innermost
+  item.
+\end{itemize}
 
+In any case, we need an operation which tells us, whether one
+|Wrapped| \emph{is} included \emph{in} another one.
 \begin{code}
-data Items ors grp lty = Items (ors (Nested grp lty)) 
-                       
-deriving instance Show (ors (Nested grp lty)) => Show (Items ors grp lty)
-
+isIn (Wrapped _ _ ) (Wrapped Open []) = True
+isIn (Wrapped e xs ) (Wrapped Closed []) = 
+        null xs
+isIn (Wrapped e1  (a:as)) (Wrapped e2  (b:bs)) =
+        (a == b) && 
+        Wrapped e1 as `isIn` Wrapped e2 bs
+isIn _ _ = False
 \end{code}
 
-So we essentially wrapped the |Nested| type we already had into |ors|,
-which basically means, that |Items| stands for a collection of Items
-and is expressed as a bunch of |Nested|.
+When you look at the first line, you'll realize that |Open []| matches
+anything. This gives rise to the definitions:
 
-
-\subsubsection{Uncompressing}
-
-The only reason why we used a |grp| to group alternatives labels is
-space-efficiency and to pave the road for SOP-like operations and
-eventually write compact sortplans. 
-
-We can write an operation with undoes the grouping. We still need to
-carry the |Ending| information around.
-
-Being lazy be write this for lists first
 \begin{code}
--- cartesian product of lists of lists
-cartesian :: [[a]] -> [[a]]
-cartesian [] = [[]]
-cartesian (x:xs) = do
-    a <- x               -- a  :: lbl
-    as <- cartesian xs   -- as :: [lbl]
-    return (a : as)
+anyWrapped = Wrapped Open []
+noWrapped  = Wrapped Closed []
 \end{code}
 
-Then we just convert our |Nested| into lists. 
+Finally |Wrapped| can be ordered, provided that the label-type |lty|
+can be ordered. We chose an ordering such that shorter |Wrapped| come
+after longer |Wrapped| and |Open| comes after |Closed|, i.e. the most
+general value comes last.
+
 
 \begin{code}
+instance Ord Ending where
+        compare Open Closed = GT
+        compare Closed Open = LT
+        compare _ _         = EQ
 
--- Every foldable can be converted into a List. 
-fToList :: (F.Foldable f) => f a -> [a]
-fToList fas = F.foldr f [] fas
-        where
-            f a xs = a:xs
-
-
--- cartesian uncompression of a |Nested|
-nCartesian :: F.Foldable grp => Nested grp lty -> [(Ending, [lty])]
-nCartesian (Nested ending lbls) = map toNested $ cartesian (map fToList lbls)
-        where
-            toNested xss = (ending,  do
-                               x <- xss
-                               return x
-                           )
+instance (Eq lty, Ord lty) => Ord (Wrapped lty) where
+        -- sorts most general value last
+        compare (Wrapped e1 as) (Wrapped e2 bs) = 
+                compare (Down as) (Down bs) <> 
+                compare e1 e2 
 \end{code}
 
 \begin{run}
-       |*Main> nCartesian $ Nested Open [[1,2],[3,4]]|
-\perform{lpp $ nCartesian $ Nested Open [[1,2],[3,4]]}
+|*Main> L.sort [Wrapped Open [1,2], Wrapped Closed [1,2,3], |\linebreak\ |                     Wrapped Open [1,2,3]]|
+\perform{lpp $ L.sort [Wrapped Open [1,2], Wrapped Closed [1,2,3], Wrapped Open [1,2,3]]}
 \end{run}
 
+\subsubsection{Choice}
 
+The next thing we need to do, is to extend the simple concept of
+wrapped items to collections of these. Now there are many
+possibilities to model a collection (a List beeing the most obvious
+one) and we do not want to choose one upfront. However, we do know
+that a collection must be Set-like, i.e. it must support operations
+for union, intersection and for putting a single |Wrapped| into a
+collection.
+
+\begin{code}
+class Wset s where
+        union :: (Ord a) => s a -> s a -> s a
+        inter :: (Ord a) => s a -> s a -> s a
+        singl ::            Wrapped a  -> s a
+\end{code}
+
+
+A List has the disadvantage, that it can contain the same value more
+than once. However, if we only maninipulate the List with the |Wset|
+operations, we can avoid this. Here is the implementation of a Wset by
+means of a List:
+
+
+\begin{code}
+data WrappedList lty = WrappedList [(Wrapped lty)] 
+                       deriving Show
+
+instance Wset WrappedList where
+        union = wlUnion
+        inter = wlIsect
+        singl x = WrappedList [x]
+\end{code}
+
+\needspace{12em}
+\begin{code}
+wlUnion (WrappedList as) (WrappedList bs) = WrappedList $ L.sort $ fst ys : snd ys
+        where
+            ys = foldr f (Wrapped Closed [], []) (as ++ bs)
+            f cx (cacc, yacc)
+                    | cx `isIn` cacc = (cacc, yacc)
+                    | otherwise      = if cacc == Wrapped Closed [] 
+                                       then (cx, yacc)
+                                       else (cx, cacc:yacc)
+
+
+wlIsect (WrappedList as) (WrappedList bs) = WrappedList (isect as bs)
+        where
+            isect _ [] = []
+            isect [] _ = []
+            isect (x:xs) (y:ys) 
+                    | x `isIn` y = x : isect xs (y:ys)
+                    | y `isIn` x = y : isect (x:xs) ys
+                    | x > y      =     isect xs (y:ys)
+                    | x < y      =     isect (x:xs) ys
+
+instance (Eq lty) => Eq (WrappedList lty) where
+        (WrappedList x) == (WrappedList y) = x == y
+
+\end{code}
+
+Examples:
+\begin{code}
+ex_l1 = singl (Wrapped Closed [1,2,3]) :: WrappedList Int
+ex_l2 = singl (Wrapped Open [1,2,4])   :: WrappedList Int
+ex_l3 = singl (Wrapped Open [1,2])     :: WrappedList Int
+ex_union1 = ex_l1 `union` ex_l2 `union` ex_l3
+\end{code}
+
+\begin{run}
+|*Main> ex_union1|
+\perform{lpp $ ex_union1}
+\end{run}
+
+\subsubsection{The Items data type}
+
+The |Items| data type stands for a collection of wrapped items. It is
+simply a type synonym, which depends on the the way we represent
+|Nset| and the label-type |lty|.
+
+
+\begin{code}
+type Items s lty = (Wset s) => s lty
+\end{code}
 
 \subsection{Products}
 
 A Product is something which can answer, whether it accepts a given
-Item. Since Items are already let-like, Products could be modeled in
-exacly the same way. A Product would accept an Item if the Items (or
-more precisely |Items| containing just this one item) is a subset of
-the Product.
+Item. This can be handled by our |Wset| typeclass just fine. To check
+whether a |Wrapped| item is part of a Wset, we create a singleton set
+and compute the intersection with the Wset and expect to get the
+singleton back.
+
+\begin{code}
+element :: (Eq (set lty), Ord lty, Wset set) => 
+           Wrapped lty -> set lty -> Bool
+element item set = let si = singl item
+                   in si == inter set si
+\end{code}
+
+\begin{run}
+|*Main> ex_union1|\\
+  \eval{ex_union1}
+
+|*Main> Wrapped Closed [1,2,3] `element` ex_union1|\\
+  \eval{Wrapped Closed [1,2,3] `element` ex_union1}
+\end{run}
+
 
 However, labels of Items tend to be more detailed than the lables
 which form a Product. Particularly an Item may carry an |id|, which
@@ -324,63 +386,30 @@ be an operation which projects any Item-Label to a Product-Label.
 Other than that, there is not much to say about Products. They
 essentially look like Items with a less detailed label-type.
 
-\subsection{Partial Orders and Subsets}
 
-We used the term |set-like| quite a bit. What we mean by this, is
-something that implements a |subset| relationship. |Subset| again is
-an example of a |partial order|, this is a binary relation, which is
-reflexive, transitive and antisymmetric. So |set-like| and partial
-order mean the same thing.
+\subsubsection{The Product data type}
 
-When we use |<:| as the comparison operator (think: subset), the a partial order is:
+So a |Product| data type is just a synonym, which depends on the
+the way we represent |Nset| and the label-type |lty|.
 
 \begin{code}
-class PartialOrder po where
-        (<:) :: (Ord a) => po a -> po a -> Bool
+type Product s lty = s lty
 \end{code}
 
-The two manyfications we used earlier have two obvious
-implementations, namely |Set| and |List|. Both are partial orders:
+Evetually we'll have to reveal the |Wset| implementation, but it is
+sufficient to do this at the very end of a computation.
 
 \begin{code}
-instance PartialOrder S.Set
-        where
-            (<:) = S.isSubsetOf
-
-
-instance PartialOrder []
-        where
-            as <: bs = (L.sort as) `L.isPrefixOf` (L.sort bs)
+ex_p1 = singl (Wrapped Closed [1,2,3]) 
+ex_p2 = singl (Wrapped Open [1,2]) 
+-- reveal |Wset| implementation
+ex_union2 = ex_p1 `union` ex_p2 :: Product WrappedList Int
 \end{code}
 
-Our |Nested| data type is a partial order itself, if it uses a partial
-order for the |grp| manification.
-
-\begin{code}
-instance (PartialOrder grp) => PartialOrder (Nested grp) 
-        where (<:) = contains
-
-contains :: (PartialOrder grp, Ord a) => Nested grp a -> Nested grp a -> Bool
-
-contains (Nested _ _ ) (Nested Open []) = True
-contains (Nested e xs ) (Nested Closed []) =
-        e == Closed && 
-        null xs
-contains (Nested e1  (a : as)) (Nested e2  (b : bs)) =
-        (a <: b) && (Nested e1 as) `contains` (Nested e2 bs)
-contains _ _ = False
-
-\end{code}
-
-Our |Items| data type is also a partial order but it is more difficult
-to write. The problem is, that |Items| are basically a set of
-cartesian products and the question whether or not one set of
-cartesian products is a subset of another such set is not that easy to
-answer. 
-
-
-
-
+\begin{run}
+       |*Main> ex_union2|
+\perform{lpp $ ex_union2}
+\end{run}
 
 
 \end{document}
