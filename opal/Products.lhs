@@ -134,7 +134,7 @@ many more. They are described by three features
 
 In the real world almost everything contains something else, so the
 chain of containemnt would never end. In our world however, we often
-reach a point, where we no longer care about containment. A parcel is
+reach a point, where we just won't look any further. A parcel is
 certainly a container and it does contain other items, however, a
 parcel processing company will not care about what is in the parcel.
 
@@ -215,7 +215,7 @@ A |Wrapped| can already describe a Set, because
 \item The label information may not reflect all information on the
   physical item of an item. Particularly we may not include the
   item|Id|. Thus a single |Wrapped| may stand for many physical items.
-\item In |Open| Wrapped we do not know what's inside the innermost
+\item In an |Open| Wrapped we do not know what's inside the innermost
   item.
 \end{itemize}
 
@@ -239,7 +239,7 @@ anyWrapped = Wrapped Open []
 noWrapped  = Wrapped Closed []
 \end{code}
 
-Finally |Wrapped| can be ordered, provided that the label-type |lty|
+A |Wrapped| can be ordered, provided that the label-type |lty|
 can be ordered. We chose an ordering such that shorter |Wrapped| come
 after longer |Wrapped| and |Open| comes after |Closed|, i.e. the most
 general value comes last.
@@ -256,6 +256,11 @@ instance (Eq lty, Ord lty) => Ord (Wrapped lty) where
         compare (Wrapped e1 as) (Wrapped e2 bs) = 
                 compare (Down as) (Down bs) <> 
                 compare e1 e2 
+
+-- xxx useful?
+instance Functor Wrapped where
+        fmap f (Wrapped ending xs) = Wrapped ending (fmap f xs)
+
 \end{code}
 
 \begin{run}
@@ -289,7 +294,7 @@ means of a List:
 
 \begin{code}
 data WrappedList lty = WrappedList [(Wrapped lty)] 
-                       deriving Show
+                       deriving (Eq, Show)
 
 instance Wset WrappedList where
         union = wlUnion
@@ -299,9 +304,9 @@ instance Wset WrappedList where
 
 \needspace{12em}
 \begin{code}
-wlUnion (WrappedList as) (WrappedList bs) = WrappedList $ L.sort $ fst ys : snd ys
+wlUnion (WrappedList as) (WrappedList bs) = WrappedList $ fst ys : snd ys
         where
-            ys = foldr f (Wrapped Closed [], []) (as ++ bs)
+            ys = foldr f (Wrapped Closed [], []) (L.sort (as ++ bs))
             f cx (cacc, yacc)
                     | cx `isIn` cacc = (cacc, yacc)
                     | otherwise      = if cacc == Wrapped Closed [] 
@@ -319,9 +324,6 @@ wlIsect (WrappedList as) (WrappedList bs) = WrappedList (isect as bs)
                     | x > y      =     isect xs (y:ys)
                     | x < y      =     isect (x:xs) ys
 
-instance (Eq lty) => Eq (WrappedList lty) where
-        (WrappedList x) == (WrappedList y) = x == y
-
 \end{code}
 
 Examples:
@@ -337,6 +339,10 @@ ex_union1 = ex_l1 `union` ex_l2 `union` ex_l3
 \perform{lpp $ ex_union1}
 \end{run}
 
+You see, only the most general "item" survived, as it contains the
+other two.
+
+
 \subsubsection{The Items data type}
 
 The |Items| data type stands for a collection of wrapped items. It is
@@ -345,16 +351,28 @@ simply a type synonym, which depends on the the way we represent
 
 
 \begin{code}
-type Items s lty = (Wset s) => s lty
+type Items set lty = (Wset set) => set lty
 \end{code}
 
 \subsection{Products}
 
 A Product is something which can answer, whether it accepts a given
-Item. This can be handled by our |Wset| typeclass just fine. To check
-whether a |Wrapped| item is part of a Wset, we create a singleton set
-and compute the intersection with the Wset and expect to get the
-singleton back.
+Item. However, there is no \emph{isElement} function available in the
+typeclass.
+
+Such a function is easy to write. We simply must convert the element
+into a singleton set (by means of |singl| and then check if this is a
+subset of the |Wset| using |inter|. Sort of like
+
+\begin{eqnarray}
+a \in M \Leftrightarrow \{a\} \cap A = \{a\}
+\end{eqnarray}
+
+
+  To check whether a
+|Wrapped| item is part of a Wset, we create a singleton set and
+compute the intersection with the Wset and expect to get the singleton
+back.
 
 \begin{code}
 element :: (Eq (set lty), Ord lty, Wset set) => 
@@ -393,7 +411,7 @@ So a |Product| data type is just a synonym, which depends on the
 the way we represent |Nset| and the label-type |lty|.
 
 \begin{code}
-type Product s lty = s lty
+type Product set lty = set lty
 \end{code}
 
 Evetually we'll have to reveal the |Wset| implementation, but it is
@@ -411,5 +429,97 @@ ex_union2 = ex_p1 `union` ex_p2 :: Product WrappedList Int
 \perform{lpp $ ex_union2}
 \end{run}
 
+
+% ------------------------------------------------------------
+\section{Processes}
+% ------------------------------------------------------------
+
+We shall now look at the various processes in the postal world and
+examine how they transform Sorting Products. 
+
+There are six elementary Processes, namely \emph{Merge, Split, Pack,
+Unpack, Buffer} and \emph{Transport}. Only the first four transform
+Products, while the last two leave them unchanged, at least when you
+assume that Products are defined irrespective of Time and
+Place\footnote{It would be interesting to see, where we end up when we
+make Time and Place part of Sorting Products}.
+
+You may be tempted to believe that these Processes can be combined in
+arbitrary ways. But this is not the case. Also, there are cases where
+it is not possible to compute input Products from output Products
+alone. We shall try to define our types, so these things become
+obvious.
+
+We'll use diagrams to illustrate the processes.  The arrows in those
+diagrams point in the direction of the Item flow. The transformation
+of Sorting Products however, runs in the opposite direction, i.e. the
+input Products are computed from the output products. To emphasize
+this, we label the input products with |y|, as they are the result of
+the transformation and the output products with |x|, as they are the
+input to the transformation.
+
+We use different symbols for Processes, Trees, Lists and Products: 
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=4cm]{ProductsSymbols.eps}
+\caption{Symbols}
+\end{figure}
+
+
+\subsection{Unpack}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=5cm]{ProductsUnpack.eps}
+\caption{Unpack}
+\end{figure}
+
+What does an |unpack| process accept? It will accept containers which
+bear a certain content and which carry certain labels. Note that our
+notion of a container-label includes everything we know about the
+container, including the container type.
+
+But the content is not really determined by the unpack process
+itself. Whatever it unpacks will be sent to some other process, which
+also accepts only certain things. The unpack process itself can only
+influence the containers it accepts\footnote{It may in theory choose
+to accept \emph{less} content than its downstream processes, but that
+is better handled by a dedicated operation and kept outside of mere
+unpacking.}.
+
+The container will sometimes be fully described by its label. This is
+true if we know that the container must be empty once unpacked. But in
+full generality, this is not the case.
+
+\begin{note}
+
+An Unpack process removes content from a container, such that both the
+content and the remaining container statisfy certain criteria. It may
+ask the container to be empty once unpacked, but it does not have to.
+
+\end{note}
+
+
+\begin{code}
+-- pUnpack :: Ord lty => WrappedList lty -> WrappedList lty -> WrappedList lty
+pUnpack (WrappedList containers) (WrappedList items) = (union)  (unions items') (WrappedList containers)
+        where
+            items' = do
+                (Wrapped e1 cs) <- containers
+                (Wrapped e2 is) <- items
+                return $ singl (Wrapped e1 (head cs : is)) -- xxx do OPEN CLOSED right
+
+-- pp $ (pUnpack (singl (Wrapped Open [2])) (singl (Wrapped Open [1,2])) :: (WrappedList Int))
+
+
+
+
+unions :: (Wset set, Ord lty) => [set lty] -> set lty
+unions xs = foldr union (singl noWrapped) xs
+
+-- xxx why is it so difficult to look inside. All I can see is lty but not the wrapped.
+
+\end{code}
 
 \end{document}
