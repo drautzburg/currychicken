@@ -102,6 +102,7 @@ import Data.Function
 import qualified Data.Ord as O
 import Text.Show.Pretty
 import Control.Arrow
+import Debug.Trace
 -- import Data.String.Utils
 pp a = putStrLn $ ppShow a
 lpp a = do
@@ -125,7 +126,7 @@ many more. They are described by three features
 \item[The item label] which in our world describes everything we need
   to know about the item, whether or not this information is
   physically printed on a piece of paper.
-\item[Containment information], i.e. information about what other
+\item[Nesting information], i.e. information about what other
   items are contained in an item, or alternatively in which item a
   given item is currently contained.
 \item[Choice], i.e. the fact that more than one item lies in the
@@ -133,12 +134,12 @@ many more. They are described by three features
 \end{description}
 
 In the real world almost everything contains something else, so the
-chain of containemnt would never end. In our world however, we often
-reach a point, where we just won't look any further. A parcel is
-certainly a container and it does contain other items, however, a
-parcel processing company will not care about what is in the parcel.
+chain of nesting would never end. In our world however, we often reach
+a point, where we just won't look any further. A parcel is certainly a
+container and it does contain other items, however, a parcel
+processing company will not care about what is in the parcel.
 
-The only situation I can think of, where this chain of containemnt
+The only situation I can think of, where this chain of nesting
 ends, is that eventually we expect items to be completely empty. If we
 can model this correctly, we are not only able to reason about empty
 containers, but also about empty containers being contained in bigger
@@ -161,9 +162,9 @@ labels in our universe. We cannot e.g. define seperate label types for
 trays and letters. In practice, this is not a limitation, because
 different label types can always be united under one union-type.
 
-\subsubsection{Containement}
+\subsubsection{Nesting}
 
-There are two ways to model containment:
+There are two ways to model nesting:
 
 \begin{description}
 \item[outside-in] means describing an item by its label and what other
@@ -179,21 +180,21 @@ difficulties with this. Hence, doing it inside-out seemed more
 \emph{fundamental} to me.
 
 
-To describe containment inside-out, we basically need a list, where
+To describe nesting inside-out, we basically need a list, where
 |[1,2,3]| would describe an item, labeled |3| inside an item, labeled
 |2| inside an item, labeled |1|. 
 
 Now we still need to be clear about whether or not item |3| is empty
 or if we just don't know what's inside. We call this the |Ending| of
-the containment and there are exactly two options:
+the nesting and there are exactly two options:
 
 \begin{code}
-data Ending = Open | Closed 
+data Ending = XOpen | XClosed 
               deriving (Eq, Show)
 \end{code}
 
 Where |Open| means that we don't know or care what's inside and
-|Closed| means that the containment is fully described, i.e. item |3|
+|Closed| means that the nesting is fully described, i.e. item |3|
 contains no further items.
 
 \begin{note}
@@ -205,38 +206,46 @@ A single, potentially "wrapped" item is then described by a list of
 labels, plus this ending indicator.
 
 \begin{code}
-data Wrapped lty = Wrapped Ending [lty] 
+data Wrapped lty = Open {wr :: [lty]} | 
+                   Closed {wr ::[lty]}
                    deriving (Eq, Show)
 \end{code}
 
-A |Wrapped| can already describe a Set, because
+Note that a |Wrapped| can have a varying degree of generality. A
+|Wrapped Open [1]| includes a |Wrapped Open [1,2]| and is thus more
+general. You cannot add ("union") the latter to the former in a
+collection, because with or without the latter you woudn't know what's
+inside your item labeled |1|.
 
-\begin{itemize}
-\item The label information may not reflect all information on the
-  physical item of an item. Particularly we may not include the
-  item|Id|. Thus a single |Wrapped| may stand for many physical items.
-\item In an |Open| Wrapped we do not know what's inside the innermost
-  item.
-\end{itemize}
-
-In any case, we need an operation which tells us, whether one
-|Wrapped| \emph{is} included \emph{in} another one.
+The following function formalizes this:
 \begin{code}
-isIn (Wrapped _ _ ) (Wrapped Open []) = True
-isIn (Wrapped e xs ) (Wrapped Closed []) = 
-        null xs
-isIn (Wrapped e1  (a:as)) (Wrapped e2  (b:bs)) =
-        (a == b) && 
-        Wrapped e1 as `isIn` Wrapped e2 bs
-isIn _ _ = False
+
+wlHead (Open xs)   = head xs
+wlHead (Closed xs) = head xs
+
+wlTail (Open xs)   = Open (tail xs)
+wlTail (Closed xs) = Closed (tail xs)
+
+isIn :: (Eq lty) => Wrapped lty -> Wrapped lty -> Bool
+
+isIn xs (Open [])    = True
+isIn xs (Closed [])  = xs == Closed []
+isIn (Open []) ys    = ys == Open []
+isIn (Closed []) ys  = True
+
+isIn xs ys = wlHead xs == wlHead ys &&
+             wlTail xs `isIn` wlTail ys
+
+
 \end{code}
 
 When you look at the first line, you'll realize that |Open []| matches
 anything. This gives rise to the definitions:
 
 \begin{code}
-anyWrapped = Wrapped Open []
-noWrapped  = Wrapped Closed []
+anyWrapped = Open []
+noWrapped  = Closed []
+
 \end{code}
 
 A |Wrapped| can be ordered, provided that the label-type |lty|
@@ -246,72 +255,68 @@ general value comes last.
 
 
 \begin{code}
-instance Ord Ending where
-        compare Open Closed = GT
-        compare Closed Open = LT
-        compare _ _         = EQ
 
 instance (Eq lty, Ord lty) => Ord (Wrapped lty) where
         -- sorts most general value last
-        compare (Wrapped e1 as) (Wrapped e2 bs) = 
-                compare (Down as) (Down bs) <> 
-                compare e1 e2 
+        compare xs ys = 
+                compare (Down (wr xs)) (Down (wr ys)) <>
+                compareEnding xs ys
+                        where
+                            compareEnding (Open _) (Closed _) = GT
+                            compareEnding (Closed _) (Open _) = LT
+                            compareEnding _ _                 = EQ
+
 
 -- xxx useful?
 instance Functor Wrapped where
-        fmap f (Wrapped ending xs) = Wrapped ending (fmap f xs)
+        fmap f (Open xs) = Open (fmap f xs)
+        fmap f (Closed xs) = Closed (fmap f xs)
+
 
 \end{code}
 
 \begin{run}
-|*Main> L.sort [Wrapped Open [1,2], Wrapped Closed [1,2,3], |\linebreak\ |                     Wrapped Open [1,2,3]]|
-\perform{lpp $ L.sort [Wrapped Open [1,2], Wrapped Closed [1,2,3], Wrapped Open [1,2,3]]}
+|*Main> L.sort [Open [1,2], Closed [1,2,3], |\linebreak\ |                     Open [1,2,3]]|
+\perform{lpp $ L.sort [Open [1,2], Closed [1,2,3], Open [1,2,3]]}
 \end{run}
 
 \subsubsection{Choice}
 
 The next thing we need to do, is to extend the simple concept of
 wrapped items to collections of these. Now there are many
-possibilities to model a collection (a List beeing the most obvious
-one) and we do not want to choose one upfront. However, we do know
-that a collection must be Set-like, i.e. it must support operations
-for union, intersection and for putting a single |Wrapped| into a
-collection.
-
-\begin{code}
-class Wset s where
-        union :: (Ord a) => s a -> s a -> s a
-        inter :: (Ord a) => s a -> s a -> s a
-        singl ::            Wrapped a  -> s a
-\end{code}
-
+possibilities to model a collection, a List beeing the most obvious
+one.
 
 A List has the disadvantage, that it can contain the same value more
-than once. However, if we only maninipulate the List with the |Wset|
-operations, we can avoid this. Here is the implementation of a Wset by
-means of a List:
+than once. However, if we only maninipulate the List with the given
+functions, we can avoid this. Here is the implementation:
 
 
 \begin{code}
 data WrappedList lty = WrappedList [(Wrapped lty)] 
                        deriving (Eq, Show)
 
-instance Wset WrappedList where
-        union = wlUnion
-        inter = wlIsect
-        singl x = WrappedList [x]
 \end{code}
 
 \needspace{12em}
 \begin{code}
+
+wlSingl x = WrappedList [x]
+
 wlUnion (WrappedList as) (WrappedList bs) = WrappedList $ fst ys : snd ys
         where
-            ys = foldr f (Wrapped Closed [], []) (L.sort (as ++ bs))
+            ys = foldr f (Closed [], []) (L.sort (as ++ bs))
             f cx (cacc, yacc)
                     | cx `isIn` cacc = (cacc, yacc)
-                    | otherwise      = if cacc == Wrapped Closed [] 
+                    | otherwise      = if cacc == Closed [] 
                                        then (cx, yacc)
                                        else (cx, cacc:yacc)
+
+
+
+-- union of several WrappedLists
+wlUnions :: (Ord lty) => [WrappedList lty] -> WrappedList lty
+wlUnions xs = foldr wlUnion (wlSingl noWrapped) xs
 
 
 wlIsect (WrappedList as) (WrappedList bs) = WrappedList (isect as bs)
@@ -328,10 +333,12 @@ wlIsect (WrappedList as) (WrappedList bs) = WrappedList (isect as bs)
 
 Examples:
 \begin{code}
-ex_l1 = singl (Wrapped Closed [1,2,3]) :: WrappedList Int
-ex_l2 = singl (Wrapped Open [1,2,4])   :: WrappedList Int
-ex_l3 = singl (Wrapped Open [1,2])     :: WrappedList Int
-ex_union1 = ex_l1 `union` ex_l2 `union` ex_l3
+
+ex_l1 = wlSingl (Closed [1,2,3])
+ex_l2 = wlSingl (Open [1,2,4])  
+ex_l3 = wlSingl (Open [1,2])    
+ex_union1 = ex_l1 `wlUnion` ex_l2 `wlUnion` ex_l3
+
 \end{code}
 
 \begin{run}
@@ -346,54 +353,47 @@ other two.
 \subsubsection{The Items data type}
 
 The |Items| data type stands for a collection of wrapped items. It is
-simply a type synonym, which depends on the the way we represent
-|Nset| and the label-type |lty|.
+simply a type synonym.
 
 
 \begin{code}
-type Items set lty = (Wset set) => set lty
+type Items lty = WrappedList lty
 \end{code}
 
 \subsection{Products}
 
 A Product is something which can answer, whether it accepts a given
-Item. However, there is no \emph{isElement} function available in the
-typeclass.
+Item. 
 
 Such a function is easy to write. We simply must convert the element
-into a singleton set (by means of |singl| and then check if this is a
-subset of the |Wset| using |inter|. Sort of like
+into a singleton set (by means of |wlSingl| and then check if this is
+a subset of the |WrappedList| using |wlIsect|. Sort of like
 
 \begin{eqnarray}
 a \in M \Leftrightarrow \{a\} \cap A = \{a\}
 \end{eqnarray}
 
-
-  To check whether a
-|Wrapped| item is part of a Wset, we create a singleton set and
-compute the intersection with the Wset and expect to get the singleton
-back.
-
 \begin{code}
-element :: (Eq (set lty), Ord lty, Wset set) => 
-           Wrapped lty -> set lty -> Bool
-element item set = let si = singl item
-                   in si == inter set si
+wlElement :: (Ord lty) => 
+           WrappedList lty -> Wrapped lty -> Bool
+wlElement set item = let si = wlSingl item
+                   in si == wlIsect set si
 \end{code}
 
 \begin{run}
 |*Main> ex_union1|\\
   \eval{ex_union1}
 
-|*Main> Wrapped Closed [1,2,3] `element` ex_union1|\\
-  \eval{Wrapped Closed [1,2,3] `element` ex_union1}
+|*Main> ex_union1 `wlAccepts` Closed [1,2,3]|\\
+  \eval{ex_union1 `wlAccepts` Closed [1,2,3]}
 \end{run}
 
 
-However, labels of Items tend to be more detailed than the lables
-which form a Product. Particularly an Item may carry an |id|, which
-often plays no role in deciding whether or not it is accepted by a
-Product.
+\begin{note}
+Labels of Items tend to be more detailed than the lables which form a
+Product. Particularly an Item may carry an |id|, which often plays no
+role in deciding whether or not it is accepted by a Product.
+\end{note}
 
 This means, we may have to ignore certain parts of an Item label in
 order to match it with a Product. It also means that the label-types
@@ -407,21 +407,17 @@ essentially look like Items with a less detailed label-type.
 
 \subsubsection{The Product data type}
 
-So a |Product| data type is just a synonym, which depends on the
-the way we represent |Nset| and the label-type |lty|.
+So a |Product| data type is just a synonym.
 
 \begin{code}
-type Product set lty = set lty
+type Product lty = WrappedList lty
 \end{code}
 
-Evetually we'll have to reveal the |Wset| implementation, but it is
-sufficient to do this at the very end of a computation.
-
 \begin{code}
-ex_p1 = singl (Wrapped Closed [1,2,3]) 
-ex_p2 = singl (Wrapped Open [1,2]) 
+ex_p1 = wlSingl (Closed [1,2,3]) 
+ex_p2 = wlSingl (Open [1,2]) 
 -- reveal |Wset| implementation
-ex_union2 = ex_p1 `union` ex_p2 :: Product WrappedList Int
+ex_union2 = ex_p1 `wlUnion` ex_p2 :: Product Int
 \end{code}
 
 \begin{run}
@@ -429,6 +425,29 @@ ex_union2 = ex_p1 `union` ex_p2 :: Product WrappedList Int
 \perform{lpp $ ex_union2}
 \end{run}
 
+\subsection{Filtering Items}
+
+From |Itens| we can filter those which fall into a Product:
+
+\begin{code}
+
+wlFilter :: (Ord lty) => Product lty -> Items lty -> Items lty
+wlFilter prod (WrappedList is) = 
+        wlUnions $ map wlSingl $ filter (wlElement prod) is
+
+ex_items1 = WrappedList [
+             Open [1,2,3],
+             Closed [1,2,3],
+             Closed [1,30,3],
+             Closed [10,2,3]
+            ] :: Items Int
+
+\end{code}
+
+\begin{run}
+|*Main> wlFilter ex_union2 ex_items1|\\
+  \eval{wlFilter ex_union2 ex_items1}
+\end{run}
 
 % ------------------------------------------------------------
 \section{Processes}
@@ -500,26 +519,32 @@ ask the container to be empty once unpacked, but it does not have to.
 
 \end{note}
 
+%if false
+-- pp $ pUnpack (wlSingl (Wrapped Open [2])) (wlSingl (Wrapped Open [1,2]))
+%endif
 
+%if false
 \begin{code}
--- pUnpack :: Ord lty => WrappedList lty -> WrappedList lty -> WrappedList lty
-pUnpack (WrappedList containers) (WrappedList items) = (union)  (unions items') (WrappedList containers)
+{-
+pUnpack :: Ord lty => 
+           WrappedList lty -> WrappedList lty -> WrappedList lty
+
+pUnpack (WrappedList containers) (WrappedList items) = 
+        wlUnion  (wlUnions items') (WrappedList containers)
+
         where
             items' = do
                 (Wrapped e1 cs) <- containers
                 (Wrapped e2 is) <- items
-                return $ singl (Wrapped e1 (head cs : is)) -- xxx do OPEN CLOSED right
-
--- pp $ (pUnpack (singl (Wrapped Open [2])) (singl (Wrapped Open [1,2])) :: (WrappedList Int))
+                return $ wlSingl (Wrapped e2 (head cs : is)) 
 
 
-
-
-unions :: (Wset set, Ord lty) => [set lty] -> set lty
-unions xs = foldr union (singl noWrapped) xs
+-}
 
 -- xxx why is it so difficult to look inside. All I can see is lty but not the wrapped.
 
 \end{code}
+%endif
+
 
 \end{document}
