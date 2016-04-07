@@ -2,26 +2,28 @@ digraph d {
 	node [fontname = "Arial"];
 	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
 
+	nodesep=0.7
 	rankdir=LR
-	subgraph list {
-		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
-		xi [label="[xi]"]
-		}
-	subgraph nest {
-		node [shape=invtrapezium, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
-		yi
-		xlbl[label=xcnt]
-		}		
-	subgraph others {
-		node [shape=circle, style=filled, fillcolor="#DDDDDD", fixedsize=true, width=0.6]
+	node [fontname = "Arial"];
+	edge [fontname = "Arial", fontsize=11,color=black, penwidth=1.5, weight=1];
 
+	subgraph prodIn {
+		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
+		pin1[label=Xcont]
+		pin2[label=Xitem]
 		}
+
+	subgraph prodOur {
+		node [shape=circle, style=filled, fillcolor="#DDFFDD", fixedsize=true, width=0.6]
+		pout1[label=Py]
+		}
+
 	subgraph process {
-		node [shape=box, style=rounded]
-		U
+		node [label="U" shape=box, style=rounded]
+		process
 	}
-{rank=same; xlbl U}
-yi -> U
-U -> xi
-U -> xlbl
+
+	pout1 -> process
+	process -> pin1
+	process -> pin2
 }

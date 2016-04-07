@@ -147,7 +147,7 @@ prop_commute xs = (pUncompressRight . pUncompressLeft)  xs ==
 
 If we use the same label-type |tly| for all our items, we can express
 Products as Lists, where ach element in that list is a label and the
-list as a whole describes one possible |Path| (of packings) to a depply
+list as a whole describes one possible |Path| (of packings) to a deeply
 nested item.
 
 To get a |Product| we need a List of Paths, to cater for all possible

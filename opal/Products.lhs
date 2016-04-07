@@ -184,27 +184,17 @@ To describe nesting inside-out, we basically need a list, where
 |[1,2,3]| would describe an item, labeled |3| inside an item, labeled
 |2| inside an item, labeled |1|. 
 
-Now we still need to be clear about whether or not item |3| is empty
-or if we just don't know what's inside. We call this the |Ending| of
-the nesting and there are exactly two options:
-
-\begin{code}
-data Ending = XOpen | XClosed 
-              deriving (Eq, Show)
-\end{code}
-
-Where |Open| means that we don't know or care what's inside and
-|Closed| means that the nesting is fully described, i.e. item |3|
-contains no further items.
-
 \begin{note}
 We know precisely what is inside an empty container, namely nothing.
 \end{note}
 
+Now we still need to be clear about whether or not the innermost item
+is empty or if we just don't know what's inside. We model this by
+allowing two kinds of items, those where the innermost item is empty
+(|Closed|) and those, where we don't know what's inside the innermost
+item (|Closed|).
 
-A single, potentially "wrapped" item is then described by a list of
-labels, plus this ending indicator.
-
+\needspace{8em}
 \begin{code}
 data Wrapped lty = Open {wr :: [lty]} | 
                    Closed {wr ::[lty]}
@@ -220,11 +210,6 @@ inside your item labeled |1|.
 The following function formalizes this:
 \begin{code}
 
-wlHead (Open xs)   = head xs
-wlHead (Closed xs) = head xs
-
-wlTail (Open xs)   = Open (tail xs)
-wlTail (Closed xs) = Closed (tail xs)
 
 isIn :: (Eq lty) => Wrapped lty -> Wrapped lty -> Bool
 
@@ -233,9 +218,15 @@ isIn xs (Closed [])  = xs == Closed []
 isIn (Open []) ys    = ys == Open []
 isIn (Closed []) ys  = True
 
-isIn xs ys = wlHead xs == wlHead ys &&
-             wlTail xs `isIn` wlTail ys
+isIn xs ys = wHead xs == wHead ys &&
+             wTail xs `isIn` wTail ys
 
+
+-- auxilary functions
+wHead (Open xs)   = head xs
+wHead (Closed xs) = head xs
+wTail (Open xs)   = Open (tail xs)
+wTail (Closed xs) = Closed (tail xs)
 
 \end{code}
 
@@ -253,9 +244,8 @@ can be ordered. We chose an ordering such that shorter |Wrapped| come
 after longer |Wrapped| and |Open| comes after |Closed|, i.e. the most
 general value comes last.
 
-
+\needspace{12em}
 \begin{code}
-
 instance (Eq lty, Ord lty) => Ord (Wrapped lty) where
         -- sorts most general value last
         compare xs ys = 
@@ -265,14 +255,6 @@ instance (Eq lty, Ord lty) => Ord (Wrapped lty) where
                             compareEnding (Open _) (Closed _) = GT
                             compareEnding (Closed _) (Open _) = LT
                             compareEnding _ _                 = EQ
-
-
--- xxx useful?
-instance Functor Wrapped where
-        fmap f (Open xs) = Open (fmap f xs)
-        fmap f (Closed xs) = Closed (fmap f xs)
-
-
 \end{code}
 
 \begin{run}
@@ -377,15 +359,15 @@ a \in M \Leftrightarrow \{a\} \cap A = \{a\}
 wlElement :: (Ord lty) => 
            WrappedList lty -> Wrapped lty -> Bool
 wlElement set item = let si = wlSingl item
-                   in si == wlIsect set si
+                     in si == wlIsect set si
 \end{code}
 
 \begin{run}
 |*Main> ex_union1|\\
   \eval{ex_union1}
 
-|*Main> ex_union1 `wlAccepts` Closed [1,2,3]|\\
-  \eval{ex_union1 `wlAccepts` Closed [1,2,3]}
+|*Main> ex_union1 `wlElement` Closed [1,2,3]|\\
+  \eval{ex_union1 `wlElement` Closed [1,2,3]}
 \end{run}
 
 
@@ -395,11 +377,11 @@ Product. Particularly an Item may carry an |id|, which often plays no
 role in deciding whether or not it is accepted by a Product.
 \end{note}
 
-This means, we may have to ignore certain parts of an Item label in
-order to match it with a Product. It also means that the label-types
-of Items and Products may differ, but we must use the same label-type
-for all Items and the same label-type for all Products. And there must
-be an operation which projects any Item-Label to a Product-Label.
+We may have to ignore certain parts of an Item label in order to match
+it with a Product. It also means that the label-types of Items and
+Products may differ, but we must use the same label-type for all Items
+and the same label-type for all Products. And there must be an
+operation which projects any Item-Label to a Product-Label.
 
 Other than that, there is not much to say about Products. They
 essentially look like Items with a less detailed label-type.
@@ -477,11 +459,10 @@ this, we label the input products with |y|, as they are the result of
 the transformation and the output products with |x|, as they are the
 input to the transformation.
 
-We use different symbols for Processes, Trees, Lists and Products: 
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=4cm]{ProductsSymbols.eps}
+\includegraphics[width=6cm]{ProductsSymbols.eps}
 \caption{Symbols}
 \end{figure}
 
@@ -501,15 +482,12 @@ container, including the container type.
 
 But the content is not really determined by the unpack process
 itself. Whatever it unpacks will be sent to some other process, which
-also accepts only certain things. The unpack process itself can only
-influence the containers it accepts\footnote{It may in theory choose
-to accept \emph{less} content than its downstream processes, but that
-is better handled by a dedicated operation and kept outside of mere
-unpacking.}.
+also accepts only certain things. 
 
-The container will sometimes be fully described by its label. This is
-true if we know that the container must be empty once unpacked. But in
-full generality, this is not the case.
+Likewise the containers will be sent to another Process. Sometimes
+this Process will accept only empty containers. In this case the
+container is fully described by its label, But in full generality,
+this is not the case.
 
 \begin{note}
 
@@ -523,28 +501,32 @@ ask the container to be empty once unpacked, but it does not have to.
 -- pp $ pUnpack (wlSingl (Wrapped Open [2])) (wlSingl (Wrapped Open [1,2]))
 %endif
 
-%if false
+
 \begin{code}
-{-
-pUnpack :: Ord lty => 
-           WrappedList lty -> WrappedList lty -> WrappedList lty
-
-pUnpack (WrappedList containers) (WrappedList items) = 
-        wlUnion  (wlUnions items') (WrappedList containers)
-
-        where
-            items' = do
-                (Wrapped e1 cs) <- containers
-                (Wrapped e2 is) <- items
-                return $ wlSingl (Wrapped e2 (head cs : is)) 
 
 
--}
+wUnpack :: Ord lty => 
+           Wrapped lty -> Wrapped lty -> Wrapped lty
+
+wUnpack (Open []) _  = Open []
+wUnpack (Closed []) _  = Closed []
+wUnpack cont itm = undefined
+
+
+        -- wlUnion  (wlUnions items') (WrappedList containers)
+
+        -- where
+        --     items' = do
+        --         (Wrapped e1 cs) <- containers
+        --         (Wrapped e2 is) <- items
+        --         return $ wlSingl (Wrapped e2 (head cs : is)) 
+
+
 
 -- xxx why is it so difficult to look inside. All I can see is lty but not the wrapped.
 
 \end{code}
-%endif
+
 
 
 \end{document}
