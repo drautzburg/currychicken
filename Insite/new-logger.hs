@@ -64,6 +64,7 @@ combined a (l, Currently (s1,s2,s3)) =
 (<+>)  = combineLogger
 
 
+main :: IO()
 main = let lgr = logByCall 1000000                   (\i -> [printf "%d invocations" i])
                  <+> logByCall 20000000              (\i -> [printf "** %d invocations" i])
                  <+> logByPx (\x1-> (> x1+750000))   ((\a -> [printf "Predicate x=%d" a, "with a next log"]) :: Wtr Int [String])

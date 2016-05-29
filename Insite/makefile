@@ -13,8 +13,8 @@ prof:
 
 
 examplerun:
-	ghc -O2  -fforce-recomp example.hs 
-	example
+	ghc -O2  -fforce-recomp des-example.hs 
+	des-example
 
 doc:
 	cabal haddock --hyperlink-source

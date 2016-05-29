@@ -21,7 +21,7 @@ ex_lgr =  (logCount 100000) writer2
            <> logEvery 150000 writer3
         where
             writer1 ((t,e),dom)      = [printf "t=%12.2f - evt=%-4s received at state=%d" t (show e) dom]
-            writer2 (n,((t,_),_))    = [printf "t=%12.2f - Processed 100000 events" t]
+            writer2 (n,((t,_),_))    = [printf "t=%12.2f - Processed another 100000 events" t]
             writer3 ((t,_),_)        = [printf "t=%12.2f - Time to write some logs" t]
             isMesg ((t,evt),dom) = evt == Mesg
 

@@ -23,11 +23,13 @@ So the ingedients for a Simulation are:
 * The state 'SimState' of the simulation. An initial state must be
 passed to the simulation. It consists of
 
-    * A Log which accumulates log entries.
+    * A Log which accumulates log entries. The initial log may be
+      empty, but does not have to.
 
     * A Domain, which repensts the state of the system we're simulating. 
 
-    * An Event-queue 'EventQu'. 
+    * An Event-queue 'EventQu'. The initial Event-queue holds events,
+      which are known to happen in the future, but can also be empty.
 
 and
 
@@ -44,9 +46,9 @@ and
 The __performance__ of the simulation is determined by the performance
 of the 'Logger' and the 'Handler' (assuming the 'ExitP' is reasonably
 fast). With a very simple handler and logger, 'runSim' can consume and
-create one million Events in less than 0.2 seconds.
+create two million Events in less than a second.
 
-The __size__ of this module is 29 lines of code (without comments and blank lines)
+The __size__ of this module is less than 50 lines of code (without comments and blank lines)
 
 -}
 
@@ -54,6 +56,7 @@ module Des where
 import Logger
 import qualified Data.Heap as H
 import Data.Monoid
+import Data.Maybe
 import Prelude hiding (log)
 -- import Debug.Trace
 
@@ -125,21 +128,22 @@ type ExitP evt dom = (Timed evt, dom) -> Bool
 -- an initial 'SimState'. The result of the simulation is the final
 -- 'SimState'
 
-runSim :: (Ord evt, Monoid log) => SimBehaviour evt dom log -> SimState evt dom log -> SimState evt dom log
+runSim :: (Ord evt, Monoid log) =>
+           SimBehaviour evt dom log -> SimState evt dom log -> SimState evt dom log
 runSim (lgr, hdr, xtp) (!log,!dom,!evq)  =
         case step of
             Nothing -> (log, dom, evq) -- end of simulation
-            Just (newEvq, newDom, newHdr, newLgr, newLog) -> runSim (newLgr,newHdr,xtp) (newLog,newDom,newEvq)
+            Just (newEvq, newDom, newHdr, newLgr, newLog)
+                    -> runSim (newLgr,newHdr,xtp) (newLog,newDom,newEvq)
         where 
             -- check for end conditions or run handler
             step = do
                 (evt, evts) <- H.view evq -- no more Events -> Nothing
                 if xtp (evt,dom)  then Nothing
                 else
-                        let (log',lgr')        = runLogger lgr (evt,dom) log
+                        let 
                             (evq', !dom', hdr') = runHandler hdr evt dom
+                            (log',lgr')         = runLogger lgr (evt,dom') log
                         -- append new event and new log entries
                         in return (evq'<>evts, dom', hdr', lgr', log')
-
-
 
