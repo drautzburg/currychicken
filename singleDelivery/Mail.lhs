@@ -17,8 +17,9 @@ module Mail where
 import System.Random
 import Data.List
 import Data.Tuple
-import Data.HashTable
-import qualified Data.HashMap as Map
+-- import Data.HashTable
+-- import qualified Data.HashMap as Map
+import qualified Data.Map as Map
 import Text.Printf
 import Debug.Trace
 \end{code}

@@ -7,8 +7,8 @@ import Text.Printf
 
 data EvtType = Start|Step|Mesg deriving (Eq,Ord,Show)
 
-ex_hdr :: Handler EvtType Int
-ex_hdr = Hdr hdr
+ex_handler :: Handler EvtType Int
+ex_handler = Hdr hdr
         where
             hdr (t,Start) d = (H.singleton (t+1, Step), d,   Hdr hdr)
             hdr (t,Step)  d = (H.singleton (t+1, Step), d+1, Hdr hdr)
@@ -42,7 +42,7 @@ ex_dom0 :: Int
 ex_dom0 = 0 
 
 run :: IO ()
-run = let (l,d,q) = runSim (ex_lgr,ex_hdr,ex_xtp) (ex_log0,ex_dom0,ex_evq0)
+run = let (l,d,q) = runSim (ex_lgr,ex_handler,ex_xtp) (ex_log0,ex_dom0,ex_evq0)
       in do
           mapM_ putStrLn l
           putStrLn $ "Final domain = " ++ (show $ d)

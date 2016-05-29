@@ -1,28 +1,24 @@
+import Data.List
+import GHC.Exts
+import Data.Function
+import qualified Data.Map as M
+import qualified Data.List.Ordered as O
+import Data.List.Split
+import Data.Maybe
+import Debug.Trace
+import System.Process
+import Control.Monad.State
+import Data.Graph.Inductive.Graph 
+import qualified Data.Graph.Inductive.PatriciaTree as P
 import Control.Arrow
-
-condAppend :: Bool -> String -> [String] -> [String]
-condAppend c suff pref = if c then pref ++ [suff]
-                         else pref
-
-res = condAppend True "goodby" 
-      $ condAppend False "wait a minute" 
-      $ condAppend True "hello" ["Hi"]
+import System.Info
 
 
-res''= (
-       condAppend True "hello"
-       >>>
-       condAppend False "wait a minute"
-       >>>
-       condAppend True "goodbye"
-      ) ["Hi"]
-
-res'= (
-       condAppend True "hello"
-       >>>
-       condAppend False "wait a minute"
-       >>>
-       condAppend True "goodbye"
-      ) ["Hi"]
-        where
-            f >>> g = g . f
+ex1 :: P.Gr String String
+ex1 = mkGraph [ (1,"one")
+              , (3,"three")
+              ]
+              [ (1,3,"edge label1"),
+                (1,3,"edge label2"),
+                (1,3,"edge label2")
+              ]
