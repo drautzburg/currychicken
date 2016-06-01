@@ -22,9 +22,10 @@ import Data.List
 import Data.Monoid
 import System.TimeIt
 import Text.Show.Pretty
+import Time
 
 -- | A writer does the formatting
-type Wtr a log = a -> log
+type Fmtr a log = a -> log
 
 -- | A looger is a writer plus an internal state
 data Logger a log = Lgr {runLogger :: a -> log -> (log, Logger a log)}
@@ -36,19 +37,19 @@ instance Monoid (Logger a log) where
                                           in (log2', mappend lgr1' lgr2')
 
 
-logIfP' :: Monoid log => (a->a->Bool) -> (a->Bool) ->  Wtr a log -> Logger a log
+logIfP' :: Monoid log => (a->a->Bool) -> (a->Bool) ->  Fmtr a log -> Logger a log
 logIfP' dp p wtr = Lgr f
         where
             f a l = if p a
                     then (wtr a  <> l, logIfP' dp (dp a) wtr)
                     else (l,           logIfP' dp p wtr)
 
-logIfP :: Monoid log => (a->Bool) -> Wtr a log -> Logger a log
+logIfP :: Monoid log => (a->Bool) -> Fmtr a log -> Logger a log
 logIfP p = logIfP' (const p) p
             
 
 -- | Count calls __s__ and write log when s has reached nxt and then every dn calls
-logCount' :: Monoid log => Int -> Int -> Int ->  Wtr (Int,a) log -> Logger a log
+logCount' :: Monoid log => Int -> Int -> Int ->  Fmtr (Int,a) log -> Logger a log
 logCount' dn nxt s wtr = Lgr f
         where
             f a l = if s == nxt
@@ -59,6 +60,11 @@ logCount' dn nxt s wtr = Lgr f
 -- | Count calls and write log every dn calls
 logCount dn = logCount' dn dn 0
 
+-- | log every dt units of time
+logEvery :: Monoid log => Double -> Fmtr (Timed evt, dom) log -> Logger (Timed evt, dom) log
+logEvery dt wtr = let p0 ((t,_),_) = t >= dt
+                      dp ((t,_),_) ((t',_),_) = t' >= t + dt
+                  in logIfP' dp p0  wtr
 
 
 -- testLogger :: Logger Int Int [String] -> [String]
@@ -66,10 +72,10 @@ testLogger lgr xs = fst $ foldl' f ([],lgr) xs
         where
             f (log', lgr') x = runLogger lgr' x log'
 
-ex_wtr :: Wtr (Int,a) [String]
+ex_wtr :: Fmtr (Int,a) [String]
 ex_wtr (x,_) = ["Counted to " ++ (show x)]
 
-ex_wtr2 :: Wtr Int [String]
+ex_wtr2 :: Fmtr Int [String]
 ex_wtr2 x = ["Counted to " ++ (show x)]
 
 ex_inputs :: [Int]

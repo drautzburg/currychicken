@@ -1,0 +1,22 @@
+digraph d {
+	node [fontname = "Arial"];
+	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
+
+	subgraph process {
+		node [shape=circle, style=filled, fillcolor="#EEEEEE", fixedsize=true, width=1]
+		logger[label="run\nlogger"]
+		}
+	subgraph hidden {
+		node [shape=plaintext]
+		a
+		log
+		log2[label="log"]
+		logger2[label="Logger a log"]
+		}
+
+
+a -> logger
+log -> logger
+logger -> log2
+logger -> logger2
+}

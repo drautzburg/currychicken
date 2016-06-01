@@ -19,6 +19,8 @@ examplerun:
 doc:
 	cabal haddock --hyperlink-source
 
+Insite.pdf: Insite.tex Des.tex Time.tex Logger.tex Logger.eps
+	pdflatex Insite.tex
 
 
 

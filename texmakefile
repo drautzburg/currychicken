@@ -15,7 +15,9 @@ export EMPTY_LHS
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
 %.tex: %.lhs
-	lhs2TeX --tt $? > $(@:.lhs=.tex)
+#	lhs2TeX --tt $? > $(@:.lhs=.tex)
+	perl unhaddock.pl $? > xxx$?
+	lhs2TeX --tt xxx$? > $(@:.lhs=.tex)
 
 %pdf: %tex
 #	pdflatex -interaction=batchmode $? 
@@ -28,7 +30,8 @@ dfd.ps:
 	echo "$$DFD_STORE" > dfd.ps
 
 %.lhs:
-	echo "$$EMPTY_LHS" > $@
+	echo  "$$EMPTY_LHS" > $@
+
 
 touch:
 	touch *.lhs
@@ -95,7 +98,7 @@ define EMPTY_LHS
 \usepackage{colortbl}	
 \usepackage{pgf}
 \usepackage[framemethod=tikz]{mdframed}
-\newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
+\\newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
 
 % --------------
 % tikz
@@ -109,21 +112,21 @@ define EMPTY_LHS
 
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
-\author{Martin Drautzburg}
-\title{XXX}
-\begin{document} \maketitle 
+\\author{Martin Drautzburg}
+\\title{XXX}
+\\begin{document} \maketitle 
 
-\begin{abstract}
+\\begin{abstract}
 \end{abstract}
 
 
-\tableofcontents 
+\\tableofcontents 
 \listoffigures
 
 \section{Introduction}
 
-%\begin{figure}[htb!]
-%\centering
+%\\begin{figure}[htb!]
+%\\centering
 %\includegraphics[width=4cm]{glass-slipper.jpg}
 %\end{figure}
 

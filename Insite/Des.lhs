@@ -1,3 +1,9 @@
+%include lhs2TeX.fmt
+%include greek.fmt
+%options ghci 
+
+%if False
+\begin{code}
 {-# LANGUAGE BangPatterns #-}
 {-|
 Module      : Des
@@ -51,55 +57,65 @@ create two million Events in less than a second.
 The __size__ of this module is less than 50 lines of code (without comments and blank lines)
 
 -}
-
 module Des where
 import Logger
 import qualified Data.Heap as H
 import Data.Monoid
 import Data.Maybe
 import Prelude hiding (log)
+import Time
 -- import Debug.Trace
+\end{code}
+%endif
 
--- * Time
+\section{Des - the main loop}
 
--- | A point in time
-type Instant = Double
+\eval{4}
 
--- | Difference between two 'Instant's
-type Interval = Double
-
--- | Infinitly long 'Interval' or distant future
-inf :: Double
-inf = 1/0 
-
--- | Something which is associated with an 'Instant'
-type Timed a = (Instant, a)
-
+% ------------------------------------------------------------
+\input{Time}
+\subsection{State}
+The simulation itself is not specific about the |Domain|, the |Log| or
+the type of |Events|. It only knows that these three ingredients
+define the |State| of the Simulation.
+\begin{code}
 -- * State
 -- | The ingredients which describe the initial (and running) state of the simulation
 type SimState evt dom log = (log, dom, EventQu evt)
+\end{code}
 
 
+The |EventQueue| is implemented as a |Heap| so we can fetch the
+earliest event easily. The elements on the heap are events which are
+associated with an |Instant|, i.e. |Timed events|. The type of the
+events is left unspecified.
+\begin{code}  
 -- | The EventQu holds Events along with their 'Instant's. The type of
--- the Events themselves is not relevant for the simulation. However,
--- the 'Logger', the 'Handler' and the 'ExitP' are specific about the
--- Events they accept as input.
+-- the Events themselves is not relevant for the simulation as such. 
 type EventQu evt = H.MinHeap (Timed evt)
+\end{code}
 
+\subsection{Behavior}
+The |Behavior| describes how the simulation gets from one state to the
+next.
+
+Note that the |Logger| is an input to the simulation, i.e. we don't
+write tons of log entries and examine them afterwards, but we run the
+simulation in order to gather just the log entries we're interested
+in.  We do this by passing a suitable |Logger| to the simulation.
+\begin{code}
 -- * Behaviour
 
 -- | The three ingredients which describe the behavior of the simulation
-type SimBehaviour evt dom log = (Logger (Timed evt, dom) log, Handler evt dom,ExitP evt dom )
+type SimBehaviour evt dom log = (
+        Logger (Timed evt, dom) log,
+        Handler evt dom,
+        ExitP evt dom
+                                )
+\end{code}
+\input{Logger}
 
-
--- | A Logger takes an Event with its 'Instant' plus the Domain in
--- the state /before/ the Event gets handled. See "Logger" for details.
-
--- | log every dt units of time
-logEvery :: Monoid log => Double -> Wtr (Timed evt, dom) log -> Logger (Timed evt, dom) log
-logEvery dt wtr = let p0 ((t,_),_) = t >= dt
-                      dp ((t,_),_) ((t',_),_) = t' >= t + dt
-                  in logIfP' dp p0  wtr
+\begin{code}
 
 
 -- | A Handler takes an Event and a current Domain and produces 
@@ -120,8 +136,10 @@ newtype Handler evt dom = Hdr {runHandler :: Timed evt -> dom -> (EventQu evt, d
 -- simulation after a specified number of steps, as we do not keep
 -- track of the number of steps.
 type ExitP evt dom = (Timed evt, dom) -> Bool
+\end{code}
 
-
+\subsection{Running the simulation}
+\begin{code}
 -- * runSim
 
 -- | This is the main simuation function. It takes a 'SimBehaviour' and
@@ -146,4 +164,8 @@ runSim (lgr, hdr, xtp) (!log,!dom,!evq)  =
                             (log',lgr')         = runLogger lgr (evt,dom') log
                         -- append new event and new log entries
                         in return (evq'<>evts, dom', hdr', lgr', log')
+
+
+\end{code}
+ 
 

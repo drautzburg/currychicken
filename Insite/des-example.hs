@@ -1,5 +1,6 @@
 import Des
 import Logger
+import Time
 import Data.Monoid
 import qualified Data.Heap as H
 import System.TimeIt

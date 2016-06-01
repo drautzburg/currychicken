@@ -513,13 +513,6 @@ wUnpack (Closed []) _  = Closed []
 wUnpack cont itm = undefined
 
 
-        -- wlUnion  (wlUnions items') (WrappedList containers)
-
-        -- where
-        --     items' = do
-        --         (Wrapped e1 cs) <- containers
-        --         (Wrapped e2 is) <- items
-        --         return $ wlSingl (Wrapped e2 (head cs : is)) 
 
 
 

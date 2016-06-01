@@ -34,6 +34,7 @@ Library
                      pretty-show
   Exposed-Modules:
         Des
+        Time
         Logger
 
   Other-Modules:

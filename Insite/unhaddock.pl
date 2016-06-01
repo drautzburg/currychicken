@@ -1,0 +1,28 @@
+use strict;
+use warnings;
+my @tag=();
+while (<>) {
+    if ($_ =~ /\\begin{(.*)}/) {push @tag => $1;}
+    elsif ($_ =~ /\\end{(.*)}/ and $1 eq $tag[@tag-1]) {pop @tag;}
+    if ( elem("code", @tag) and /(.*[{-]-)(.*)/) {
+        print $1 => process($2) => "\n";
+    }
+    else {        print;    }
+}
+print "\n";
+
+sub process{
+    my ($input) = @_;
+    $input =~ s/\|//g;          # escapes |
+    $input =~ s/\@/\@\@/g;    # escapes @
+    $input =~ s/\^//g;               # drop ^
+    $input =~ s/\*.*//g;             
+    $input =~ s/\"/\'/g;             # change " into '
+    return "$input";
+}
+sub elem {
+    my ($x, @xs) = @_;
+    my $res = 0;
+    for (@xs) {$res=1 if $x eq $_}
+    return $res;
+}
