@@ -9,6 +9,7 @@ module Logger where
 import Time
 import Debug.Trace
 import Control.Monad.Writer
+import Data.Machine.Mealy
 \end{code}
 %endif
 
@@ -55,9 +56,7 @@ returns a new version of itself.
 
 
 \begin{code}
-data LogCondition a = Lgc {
-            ifLog :: a -> (Bool, LogCondition a)
-        }
+type LogCondition a = Mealy a Bool
 \end{code}
 
 \needspace{15em}
@@ -67,13 +66,13 @@ Here are some ready-made LogConditions
 
 -- | Create a 'logCondition' from a constant predicate. 
 logIf :: (a->Bool) -> LogCondition a
-logIf p = Lgc $ \a -> (p a, logIf p)
+logIf p = Mealy $ \a -> (p a, logIf p)
 \end{code}
 
 \begin{code}
 -- | log every n invocations          
 logEveryN :: Int -> Int -> LogCondition a 
-logEveryN n i = Lgc f
+logEveryN n i = Mealy f
         where
             f _ = if i >= n
                   then (True,  logEveryN n (i-n))
@@ -81,7 +80,7 @@ logEveryN n i = Lgc f
 
 -- | Start logging at t=t0 and then every dt units of time
 logEveryT :: Interval -> Instant -> LogCondition (Timed a)
-logEveryT dt t0 = Lgc f
+logEveryT dt t0 = Mealy f
         where
             f (t,_)  = if t >= t0
                        then (True,  logEveryT dt (t0 + dt))
@@ -92,11 +91,8 @@ Several LogConditions can be combined into one.
 
 \begin{code}
 logOp :: (Bool->Bool->Bool) -> LogCondition a -> LogCondition a -> LogCondition a
-logOp op lgc1 lgc2 = Lgc f
-        where
-            f a = let (b1, lgc1') = ifLog lgc1 a
-                      (b2, lgc2') = ifLog lgc2 a
-                  in (b1 `op` b1, logOp op lgc1' lgc2')
+logOp op lgc1 lgc2 = op <$> lgc1 <*> lgc2
+
 
 \end{code}
 
@@ -120,7 +116,7 @@ data LogFormatter a l = Fmt {
 logger :: LogCondition a -> LogFormatter a l -> Logger a l
 logger lgc fmt = Lgr f
         where
-            f a (Lgs l) = let !(!b, !lgc') = (ifLog lgc) a
+            f a (Lgs l) = let !(!b, !lgc') = runMealy lgc a
                               !lgr' = logger lgc' fmt
                           in if b
                              then (Lgs $ runFormatter fmt a ++ l, lgr')
