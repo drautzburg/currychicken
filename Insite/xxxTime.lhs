@@ -16,21 +16,22 @@ import qualified Data.Heap as H
 %endif
 
 \begin{code}
--- * Time
+-- 
 
--- | A point in time
+--  A point in time
 type Instant = Double
 
--- | Difference between two 'Instant's
+--  Difference between two 'Instant's
 type Interval = Double
 
--- | Infinitly long 'Interval' or distant future
+--  Infinitly long 'Interval' or distant future
 inf :: Double
 inf = 1/0 
 
--- | Something which is associated with an 'Instant'
+--  Something which is associated with an 'Instant'
 type Timed a = (Instant, a)
 
--- | A queue of timed things
+--  A queue of timed things
 type TimedQ e = H.MinHeap (Timed e)
 \end{code}
+

@@ -34,7 +34,7 @@ keep their own states, but they won't tell anybody about it.
 
 
 \begin{code}
--- | Exit predicate - when to end the Simuation
+--  Exit predicate - when to end the Simuation
 type ExitP e d  = Timed e -> d -> Bool
 \end{code}
 
@@ -49,7 +49,6 @@ runSim :: (Ord e, Show e) =>
 \end{code}
 \needspace{20em}
 \begin{code}
--- | Run the simulation
 runSim xtp state =  case (H.view . iev . hds) state of
   Nothing -> state -- no more events
   Just ((t,e), tevts)
@@ -72,3 +71,4 @@ runSim xtp state =  case (H.view . iev . hds) state of
                 then  state'
                 else  runSim xtp state'
 \end{code}        
+

@@ -8,7 +8,6 @@
 module Logger where
 import Time
 import Debug.Trace
-import Control.Monad.Writer
 \end{code}
 %endif
 
@@ -64,14 +63,19 @@ data LogCondition a = Lgc {
 Here are some ready-made LogConditions
 
 \begin{code}
+logAlways :: LogCondition a
+logAlways = Lgc (\_ -> (True, logAlways))
 
--- | Create a 'logCondition' from a constant predicate. 
+logNever :: LogCondition a
+logNever = Lgc (\_ -> (False, logNever))
+
+--  Create a 'logCondition' from a predicate. Does not change itself.            
 logIf :: (a->Bool) -> LogCondition a
 logIf p = Lgc $ \a -> (p a, logIf p)
 \end{code}
 
 \begin{code}
--- | log every n invocations          
+--  log every n invocations          
 logEveryN :: Int -> Int -> LogCondition a 
 logEveryN n i = Lgc f
         where
@@ -79,7 +83,7 @@ logEveryN n i = Lgc f
                   then (True,  logEveryN n (i-n))
                   else (False, logEveryN n (i+1))
 
--- | Start logging at t=t0 and then every dt units of time
+--  Start logging at t=t0 and then every dt units of time
 logEveryT :: Interval -> Instant -> LogCondition (Timed a)
 logEveryT dt t0 = Lgc f
         where
@@ -91,12 +95,12 @@ logEveryT dt t0 = Lgc f
 Several LogConditions can be combined into one.
 
 \begin{code}
-logOp :: (Bool->Bool->Bool) -> LogCondition a -> LogCondition a -> LogCondition a
-logOp op lgc1 lgc2 = Lgc f
+logAnd :: LogCondition a -> LogCondition a -> LogCondition a
+logAnd lgc1 lgc2 = Lgc f
         where
             f a = let (b1, lgc1') = ifLog lgc1 a
                       (b2, lgc2') = ifLog lgc2 a
-                  in (b1 `op` b1, logOp op lgc1' lgc2')
+                  in (b1 && b1, logAnd lgc1' lgc2')
 
 \end{code}
 
@@ -116,7 +120,7 @@ data LogFormatter a l = Fmt {
 \subsubsection{Combinators}
 
 \begin{code}
--- | Create a logger from 'LogCondition' and 'Formatter'
+--  Create a logger from 'LogCondition' and 'Formatter'
 logger :: LogCondition a -> LogFormatter a l -> Logger a l
 logger lgc fmt = Lgr f
         where
@@ -126,7 +130,7 @@ logger lgc fmt = Lgr f
                              then (Lgs $ runFormatter fmt a ++ l, lgr')
                              else (Lgs l, lgr')
 
--- | Create a Logger from multiple existing loggers xxx ugly
+--  Create a Logger from multiple existing loggers xxx ugly
 loggers :: [Logger a l] -> Logger a l
 loggers lgrs = Lgr run
         where
@@ -140,11 +144,3 @@ loggers lgrs = Lgr run
 
 \end{code}
 
-\begin{code}
-
---   runLogger :: a -> LoggerState l -> (LoggerState l, Logger a l)
-xrunLogger :: (Logger a l) -> a -> Writer l (Logger a l)
-xrunLogger = undefined
-
-
-\end{code}
