@@ -11,6 +11,8 @@ prof:
 	des-example +RTS -p -RTS
 
 
+loc.tex: *.lhs *.hs
+	(echo '\\begin{Verbatim}[fontsize=\\footnotesize]'; cloc --by-file --quiet `ls *.lhs *.hs | grep -v xxx`; echo '\\end{Verbatim}') > loc.tex
 
 examplerun:
 	ghc -O2  -fforce-recomp des-example.hs 
@@ -19,8 +21,8 @@ examplerun:
 doc:
 	cabal haddock --hyperlink-source
 
-Insite.pdf: Insite.tex Des.tex Time.tex Logger.tex Logger.eps
-	pdflatex Insite.tex
+Insite.pdf: Insite.tex Des.tex Time.tex Logger.tex Logger.eps Handler.tex loc.tex
+	pdflatex Insite.tex 
 
 
 

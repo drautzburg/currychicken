@@ -8,15 +8,15 @@ digraph d {
 		}
 	subgraph hidden {
 		node [shape=plaintext]
-		a
 		log
-		log2[label="log"]
+		a
 		logger2[label="Logger a log"]
+		log2[label="log"]
 		}
 
-
-a -> logger
 log -> logger
-logger -> log2
+a -> logger
+
 logger -> logger2
+logger -> log2
 }
