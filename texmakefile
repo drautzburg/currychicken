@@ -16,8 +16,21 @@ export EMPTY_LHS
 
 %.tex: %.lhs
 #	lhs2TeX --tt $? > $(@:.lhs=.tex)
-	perl unhaddock.pl $? > xxx$?
+	../unhaddock $?  > xxx$?
 	lhs2TeX --tt xxx$? > $(@:.lhs=.tex)
+
+%.heap: %.hs
+#	ghc -O2 -prof -auto-all -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
+	ghc -O2 -prof -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
+#	$(?:.hs=) +RTS -hc -p
+	$(?:.hs=) +RTS -hy -p
+	hp2ps -c -e8in $(?:.hs=.hp)	
+	okular $(?:.hs=.ps) 2>/dev/null &
+
+%.prof: %.hs
+	ghc -O2 -prof -auto-all -caf-all -rtsopts -fforce-recomp $?
+	$(@:.prof=) +RTS -p -RTS
+
 
 %pdf: %tex
 #	pdflatex -interaction=batchmode $? 
@@ -37,7 +50,7 @@ touch:
 	touch *.lhs
 
 clean:
-	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof *.log *~ 
+	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof heaptest* *.log *~ 
 
 
 

@@ -23,7 +23,7 @@ data SimState e d l = SimState {
   hds :: HandlerState e d,
   hdr :: Handler e d,
 
-  lgs :: LoggerState l,
+  lgs :: l,
   lgr :: Logger (Timed (e,d)) l
   }
 \end{code}

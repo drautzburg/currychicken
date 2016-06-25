@@ -31,6 +31,10 @@ inf = 1/0
 -- | Something which is associated with an 'Instant'
 type Timed a = (Instant, a)
 
+-- | Get the 'Instant' component
+instant :: Timed a -> Instant
+instant = fst
+
 -- | A queue of timed things
 type TimedQ e = H.MinHeap (Timed e)
 \end{code}

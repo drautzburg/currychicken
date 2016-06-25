@@ -8,7 +8,8 @@
 module Logger where
 import Time
 import Debug.Trace
-import Control.Monad.Writer
+import Control.Monad.State
+import Data.Monoid
 import Data.Machine.Mealy
 \end{code}
 %endif
@@ -30,19 +31,15 @@ Not that the Simulation accepts exactly one Logger. If we need to log
 multiple things, then we create a new Logger from several other
 Loggers.
 
-The |LoggerState| is basically just a list of log-entries of type |l|.
 
-\begin{code}
-data LoggerState l = Lgs {getLog :: [l]}
-\end{code}
-
-A Logger appends log entries to the LoggerState and returns a new
+A Logger appends log entries to the Log and returns a new
 versions of itself.
 
 \begin{code}
 data Logger a l = Lgr {
-  runLogger :: a -> LoggerState l -> (LoggerState l, Logger a l)
+  runLogger :: a -> l -> (l, Logger a l)
   }
+
 \end{code}
 
 To create a Logger we must specify \emph{when} to log and \emph{what}
@@ -75,7 +72,7 @@ logEveryN :: Int -> Int -> LogCondition a
 logEveryN n i = Mealy f
         where
             f _ = if i >= n
-                  then (True,  logEveryN n (i-n))
+                  then (True,  logEveryN n 0)
                   else (False, logEveryN n (i+1))
 
 -- | Start logging at t=t0 and then every dt units of time
@@ -103,7 +100,7 @@ list of log-entries.
 
 \begin{code}
 data LogFormatter a l = Fmt {
-            runFormatter :: a -> [l]
+            runFormatter :: a -> l
         }
 
 \end{code}
@@ -113,15 +110,14 @@ data LogFormatter a l = Fmt {
 
 \begin{code}
 -- | Create a logger from 'LogCondition' and 'Formatter'
-logger :: LogCondition a -> LogFormatter a l -> Logger a l
+logger :: Monoid l => LogCondition a -> LogFormatter a l -> Logger a l
 logger lgc fmt = Lgr f
         where
-            f a (Lgs l) = let !(!b, !lgc') = runMealy lgc a
-                              !lgr' = logger lgc' fmt
+            f a log = let !(!b, !lgc') = runMealy lgc a
+                          !lgr'        = logger lgc' fmt
                           in if b
-                             then (Lgs $ runFormatter fmt a ++ l, lgr')
-                             else (Lgs l, lgr')
-
+                             then (runFormatter fmt a <> log, lgr')
+                             else (log, lgr')
 -- | Create a Logger from multiple existing loggers xxx ugly
 loggers :: [Logger a l] -> Logger a l
 loggers lgrs = Lgr run
@@ -138,9 +134,6 @@ loggers lgrs = Lgr run
 
 \begin{code}
 
---   runLogger :: a -> LoggerState l -> (LoggerState l, Logger a l)
-xrunLogger :: (Logger a l) -> a -> Writer l (Logger a l)
-xrunLogger = undefined
 
 
 \end{code}
