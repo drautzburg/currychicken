@@ -168,6 +168,36 @@ The added value created by delivering an item is what a postal
 organization sells to its customers. Let's call it the \emph{delivery
   value} $dv$.
 
+For each item, the delivery value is a function of time. If you
+eplicitly asked to deliver your parcels not earlier than the day after
+tomorrow (because you're not at home earlier), then it is wise to wait
+two days until delivery.
+
+This leads to the conclusion, that the optimal sortplan cannot be
+constructed without knowing the interval durinch which it shall remain
+valid.
+
+If all we know is that you are not at home today and tomorrow, then
+the optimal decision is to deliver the parcel to your neighbour. 
+
+If we additionally know that you will be back the day after tomorrow
+and you want your parcels delivered then, then the optimal decision is
+to not deliver at all the next two days and then deliver. This
+however, calls for two sortplans where the first is valid only for the
+next two days.
+
+If we want to make a Sortplan which is valid for the next month, then
+we can always deliver to you, which will fail the next two days such
+that parcels need to go back to the depot and in total lead to two
+unsuccessful delivery attemopts. Or we can always delivery to your
+neighbour, which will be optimal for the next two days but quite
+suboptimal after that.
+
+In the real world of course, the postman will make an ad-hoc decision
+and try to deliver to your neighbour in case you are not at home. This
+however changes the Sortplan and we assumed the sortplan needs to
+remain unchanged for a whole month.
+
 %\begin{figure}[htb!]
 %\centering
 %\includegraphics[width=4cm]{glass-slipper.jpg}
