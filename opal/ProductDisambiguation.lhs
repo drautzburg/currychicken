@@ -52,6 +52,7 @@ This paper discusses this problem.
 \listoffigures
 
 \section{Introduction}
+\subsection{Sorting}
 
 Sortplans define how to split up mail into a number of
 separations. Such a process is needed, because each separation is
@@ -92,115 +93,104 @@ This is the general idea: whenever there is ambiguity, the cheapest
 solution will be chosen. This requires a \emph{price model} to be
 built into the system which constructs sortplans.
 
-\section {Cost models}
+It should be noted, that the optimal solution is a solution for
+\emph{disposing} things.
+
 \subsection{Classification}
 
-Sortplans typically don't operate on individual items. This is because
-we want Sortplans to be valid for at least a number of days. However,
-mail-items change from day to day and a Sortplan will see a given
-mail-item typically only once.
+Sorting machines today don't take decisions based on individual
+items. Instead they read the address and other non-address-attributes,
+e.g. \emph{priority} and compute a classification of the mailpiece. In
+a second step they decide where \emph{all} mailpiceses of that
+classifcation shall go.
 
-Therefor we \emph{classify} mail-items into a number of classes, such
-that the identity of a mail-item no longer plays a role and that more
-than one mail-item can fall into the same class. In the example above
-\emph{All parcels destined to your address} (``your parcels'') form
-such a class. This definition is valid for quite some time and during
-that time many parcels may fall into this class.
+Suppose a mailpice can be described by a number of attributes which
+together can be summarized in some type |mpc|. Also suppose that there
+are a number of classifications which can be summarized in a type
+|cls|. Then a classification is a mapping from |mpc| to |cls|.
 
-Likwise there is a classification for your ``neighbour's parcels''. If
-we now define what the two processes \emph{you} and \emph{neighbour}
-accept, we get the following table.
 
-\begin{tabular}{l l l}
-Process &class & cost\\
-\hline
-you & your parcels & low \\
-you & neighbour's parcels & high \\
-neighbour & your parcels & high \\
-neighbour & neighbour's parcels & low \\
-\hline
-\end{tabular}
+\begin{code}
+type Classification cls mpc =  mpc -> cls
+\end{code}
 
-There is some ambiguity which needs to be resolved. However, when
-you're not at home, then the \emph{you} process is not available and
-this table is reduced to one without ambiguity.
+To take a sorting decision, the sorting machine takes a
+classification |cls| and looks it up in a \emph{Sortplan}. The result
+of that lookup is an output |out|.
 
-\begin{tabular}{l l l}
-Process &class & cost\\
-\hline
-neighbour & your parcels & high \\
-neighbour & neighbour's parcels & low \\
-\hline
-\end{tabular}
+\begin{code}
+type SplLookup out cls = cls -> out 
+\end{code}
 
-\subsection{Adding value}
+The entire sorting decision maps a mailpice to an output
 
-What if the postman decides to leave your parcel at the depot when
-you're not at home but your neighbour \emph{is} at home. As far as
-we've taken costs into account, this seems like an optimal solution,
-because it avoids the high cost associated with delivering the parcel
-to your neighbour. But obviously, in the real world this may not be
-optimal at all.
+\begin{code}
+type Split out mpc = mpc -> out
+\end{code}
 
-There seems to be additional cost associated with not processing an
-item at all. If this was not the case, a postal organisation could
-simply not do anything at all as it is the best solution for
-minimizing cost.
+and it can be constructed from a classification and a Sortplan lookup
 
-Another way of seeing this is that processing an item produces
-value. Likewise, delivering to your neighbour may be seen as adding
-less value, compared to delivering it directly to you. So value and
-cost are essentially two sides of the same coin.
+\begin{code}
+split ::  Classification cls mpc -> SplLookup out cls -> Split out mpc
+split classification spLookup = spLookup . classification
+\end{code}
 
-In the light of this reasoning, a postman is well advised to deliver a
-parcel to your neighbour, if the added value outweighs the additional
-cost, or if we associate delivering to your neighbout with less added
-value instead of an additional cost, if the added value is still
-positive.
+For the Disambiguation problem we are only concerned with the
+|SplLookup|, i.e. we are essentially trying to find a way to construct
+a Sortplan.
 
-There may well be situations, where this is not the case. If e.g. the
-postman knows that you expect a parcel only the day after tomorrow,
-then there is no point delivering it to your neighbour and it will be
-better to try again in two days.
 
-\subsection{Added value over time}
-The added value created by delivering an item is what a postal
-organization sells to its customers. Let's call it the \emph{delivery
-  value} $dv$.
+\subsection{The buying analogy}
 
-For each item, the delivery value is a function of time. If you
-eplicitly asked to deliver your parcels not earlier than the day after
-tomorrow (because you're not at home earlier), then it is wise to wait
-two days until delivery.
+We can construct an analogy to the disambiguation of sorting by
+turning everything around and look for an optimal way of buying
+things. We put ourselves in a position, where we want to construct
+items of a certain product. The question is where to buy the component
+parts from.
 
-This leads to the conclusion, that the optimal sortplan cannot be
-constructed without knowing the interval durinch which it shall remain
-valid.
+Instead of the downsream processes we now have to consider upstream
+vendors. As long as there is only one vendor for each component part,
+there is no ambiguity. But if the same part is offerend by more than
+one vendor, we have to make a decision.
 
-If all we know is that you are not at home today and tomorrow, then
-the optimal decision is to deliver the parcel to your neighbour. 
+Vendors may have different cost models. Let's assume we want to buy a
+gizmo and both vendor A and vendor B offer it. Vendor A can only
+deliver 100 items, but is cheaper then vendor B who can supply 10,000.
 
-If we additionally know that you will be back the day after tomorrow
-and you want your parcels delivered then, then the optimal decision is
-to not deliver at all the next two days and then deliver. This
-however, calls for two sortplans where the first is valid only for the
-next two days.
+We would then buy 100 gizmos from vendor A and the rest from vendor
+B. However, this is a thing we cannot do if the analogy shall hold
+(see \emph{Classification}). We have to choose a vendor for
+gizmos and this decision needs to hold for some time. In that case we
+would reason as follows:
 
-If we want to make a Sortplan which is valid for the next month, then
-we can always deliver to you, which will fail the next two days such
-that parcels need to go back to the depot and in total lead to two
-unsuccessful delivery attemopts. Or we can always delivery to your
-neighbour, which will be optimal for the next two days but quite
-suboptimal after that.
+\begin{itemize}
+\item If we need 100 items or less, then we would buy them from the cheaper vendor A
+\item If we need more than 100 items, then we have to buy them from vendor B
+\end{itemize}
 
-In the real world of course, the postman will make an ad-hoc decision
-and try to deliver to your neighbour in case you are not at home. This
-however changes the Sortplan and we assumed the sortplan needs to
-remain unchanged for a whole month.
+This has quite a number of consequences:
+\begin{itemize}
+\item It is not sufficient to know what we want to produce, we also
+  need to know how much we want to produce.
+\item It is not sufficient to know what each vender has to offer (and
+  the price thereof), we also need to know how much they can sell, and
+  probably more.
+\end{itemize}
 
-%\begin{figure}[htb!]
-%\centering
-%\includegraphics[width=4cm]{glass-slipper.jpg}
-%\end{figure}
+Now the number of items we want to produce may not have an upper
+bound. When we continously produce items, the number of itmes and thus
+the number of gizmos we need will increase as time goes by. Hence it
+is difficult to answer the question ``how many gizmos do we need?''.
+
+The number of gizmos show the same behaviour. Vendor A may only be
+able to supply 100 gizmos now, but in the long he may supply a lot
+more.
+
+This means, that in order to construct a ``purchasing plan'' we need
+to know for how long we want to leave in unchanged.
+
+
+
+
 
 \end{document}
