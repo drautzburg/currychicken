@@ -159,7 +159,6 @@ import Data.Monoid
 import Data.IntSet
 import Control.DeepSeq
 import Control.Concurrent
-import System.Time
 import Debug.Trace
 import System.TimeIt
 
