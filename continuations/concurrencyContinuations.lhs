@@ -1,8 +1,7 @@
 \documentclass{article}
 %include lhs2TeX.fmt
 %include lhs2TeX.sty
-%format <- = "$\leftarrow${ }"
-%format .  = "$\circ$"
+%format <- = "\char''30"
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage[parfill]{parskip}
@@ -191,7 +190,7 @@ following way:
 run1 [] = return ()
 run1 (a:as) = case a of
                   Atom2 a  -> do 
-                         a' <-a  -- run the head of the list 
+                         a' <- a  -- run the head of the list 
                                   -- and grab the continuation
                          run1 (as ++ [a']) -- put continuation at 
                                            -- the end of the list,
@@ -209,6 +208,7 @@ a Counter |i|, produces some output and then returns itself with a
 decremented counter as the continuation. When the counter reaches
 zero, it returns a |Stop2| as the continuation.
 
+\needspace{5em}
 \begin{code}
 exThread1 name i = Atom2 $ do
                        putStrLn $ name ++ " " ++ (show i) ++ ","
@@ -220,7 +220,7 @@ exThread1 name i = Atom2 $ do
 \needspace{12em}
 \begin{run}
 |*Main> run1 [exThread1 "foo" 3, exThread1 "bar" 1]|\\
-  \eval{run1 [exThread1 "foo" 3, exThread1 "bar" 1]}
+  \perform{run1 [exThread1 "foo" 3, exThread1 "bar" 1]}
 \end{run}
 
 So our |Thread1| type in conjunction with |run1| really produces a
@@ -258,7 +258,7 @@ The code looks ugly, because there is no special support for chaining
 |Thread2| functions. Hence we had to resort to \$ for
 chaining. Without \$ we would have had to use parentheses, which looks
 even uglier.
-
+\needspace{10em}
 \begin{code}
 exThread3 = Atom2 ( do
                 putStrLn "step 1,"

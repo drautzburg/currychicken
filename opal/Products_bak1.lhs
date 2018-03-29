@@ -79,8 +79,6 @@ This paper attempts to formalize these transformations.
 \end{abstract}
 
 
-\tableofcontents 
-\listoffigures
 %if false
 \begin{code}
 {-# Language FlexibleInstances #-}

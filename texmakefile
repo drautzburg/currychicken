@@ -2,6 +2,7 @@
 export DFD_STORE
 export EMPTY_LHS
 
+
 %.eps: %.dot
 	dot -T eps -l dfd.ps $? > $@
 
@@ -14,10 +15,10 @@ export EMPTY_LHS
 %.pdf: %.eps
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
-%.tex: %.lhs
+$(DOC)%.tex: %.lhs
 #	lhs2TeX --tt $? > $(@:.lhs=.tex)
-	../unhaddock $?  > xxx$?
-	lhs2TeX --tt xxx$? > $(@:.lhs=.tex)
+	../unhaddock $?  > $(DOC)xxx$?
+	lhs2TeX --tt $(DOC)xxx$? > $(@:.lhs=.tex)
 
 %.heap: %.hs
 #	ghc -O2 -prof -auto-all -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
@@ -32,9 +33,10 @@ export EMPTY_LHS
 	$(@:.prof=) +RTS -p -RTS
 
 
-%pdf: %tex
+$(DOC)%pdf: $(DOC)%tex
 #	pdflatex -interaction=batchmode $? 
-	pdflatex $<  
+	pdflatex $<
+#	lualatex --output-format=pdf $<
 
 %.view: %.pdf
 	"C:/Program Files (x86)/SumatraPDF/SumatraPDF.exe" $?
@@ -130,7 +132,7 @@ define EMPTY_LHS
 \\begin{document} \maketitle 
 
 \\begin{abstract}
-\end{abstract}
+\\end{abstract}
 
 
 \\tableofcontents 
@@ -141,7 +143,7 @@ define EMPTY_LHS
 %\\begin{figure}[htb!]
 %\\centering
 %\includegraphics[width=4cm]{glass-slipper.jpg}
-%\end{figure}
+%\\end{figure}
 
-\end{document}
+\\end{document}
 endef
