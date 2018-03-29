@@ -1,0 +1,4 @@
+filter  :: (a -> Bool) -> Event a -> Event a
+accumE  :: a -> Event (a -> a) -> Event a
+stepper :: a -> Event a -> Behavior a
+apply   :: Behavior (a -> b) -> Event a -> Event b
