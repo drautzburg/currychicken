@@ -15,10 +15,13 @@ export EMPTY_LHS
 %.pdf: %.eps
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
-$(DOC)%.tex: %.lhs
-#	lhs2TeX --tt $? > $(@:.lhs=.tex)
-	../unhaddock $?  > $(DOC)xxx$?
-	lhs2TeX --tt $(DOC)xxx$? > $(@:.lhs=.tex)
+$(DOC)/%.tex: %.lhs
+	../unhaddock $?  > $(DOC)/xxx$?
+	lhs2TeX --tt $(DOC)/xxx$? > $@
+
+%.tex: %.lhs
+	../unhaddock $?  > xxx$?
+	lhs2TeX --tt xxx$? > $@
 
 %.heap: %.hs
 #	ghc -O2 -prof -auto-all -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
@@ -33,13 +36,13 @@ $(DOC)%.tex: %.lhs
 	$(@:.prof=) +RTS -p -RTS
 
 
-$(DOC)%pdf: $(DOC)%tex
+%.pdf: %.tex
 #	pdflatex -interaction=batchmode $? 
-	pdflatex $<
+	cd $(dir $@); pdflatex $(notdir $<)
 #	lualatex --output-format=pdf $<
 
 %.view: %.pdf
-	"C:/Program Files (x86)/SumatraPDF/SumatraPDF.exe" $?
+	"C:/Program Files/SumatraPDF/sumatrapdf" $? &
 
 dfd.ps:
 	echo "$$DFD_STORE" > dfd.ps

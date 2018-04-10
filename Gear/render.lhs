@@ -22,6 +22,7 @@ is already used by another player
 Initially there is a collection of Devices and Channels. A Device is
 identified by its name.
 \begin{code}
+import CommonFormatting
 import Control.Monad.State
 \end{code}
 
@@ -90,7 +91,7 @@ type T1 = [State ChannelPool MidiScore] -> State ChannelPool [MidiScore]
 
 This transformation is what |sequence| does, whose general type is
 
-|sequence :: Monad m => t (m a) -> m (t a)|.
+\perform{:cmd verb ":t sequence"}
 
 In our case the Monad is |State ChannelPool|, |t| is |[]| (aka List)
 and |a| is |MidiScore|.

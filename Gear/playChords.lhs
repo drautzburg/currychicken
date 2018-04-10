@@ -207,7 +207,7 @@ Now, we can use |apply|
 
 This is not quite what we wanted. We wanted |[(StartTime, Note)]|, but
 we got |[(StartTime, [Note])]|. In other words: we wanted |Events
-Note]| but we got |Events [Note]|. We need to flatten the structure.
+Note| but we got |Events [Note]|. We need to flatten the structure.
 
 
 \begin{code}
