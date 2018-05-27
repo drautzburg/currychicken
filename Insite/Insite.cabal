@@ -31,7 +31,8 @@ Library
                      mtl,
                      containers,
                      timeit,
-                     pretty-show
+                     pretty-show,
+                     machines
   Exposed-Modules:
         Des
         Time
