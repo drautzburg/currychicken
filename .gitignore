@@ -6,3 +6,9 @@
 *~
 *.log
 *.ptb
+*.hi
+*.o
+xx*
+*.lof
+*.out
+RCS/
