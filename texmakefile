@@ -16,12 +16,13 @@ export EMPTY_LHS
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
 $(DOC)/%.tex: %.lhs
-	../unhaddock $?  > $(DOC)/xxx$?
-	lhs2TeX --tt $(DOC)/xxx$? > $@
+#	../unhaddock $?  > $(DOC)/xxx$?
+	lhs2TeX --tt $? > $@
 
 %.tex: %.lhs
-	../unhaddock $?  > xxx$?
-	lhs2TeX --tt xxx$? > $@
+#	../unhaddock $?  > xxx$?
+#	lhs2TeX --tt xxx$? > $@
+	lhs2TeX --tt $? > $@
 
 %.heap: %.hs
 #	ghc -O2 -prof -auto-all -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
@@ -97,56 +98,61 @@ endef
 # --- empty lhs document ---
 
 define EMPTY_LHS
-\documentclass[a4paper]{article}
+\\documentclass[a4paper]{article}
 %include lhs2TeX.fmt
 %include greek.fmt
 %options ghci -fglasgow-exts
-
-\usepackage{tikz}
-\usetikzlibrary{arrows,mindmap,backgrounds}
-\usepackage{fancyhdr}
-\usepackage{needspace}
-\usepackage{amsmath}
-\usepackage{graphicx}
-\usepackage{capt-of}
-\usepackage{ragged2e}
-\usepackage[parfill]{parskip}
-\usepackage{ctable}
-\usepackage{color}
-\usepackage{colortbl}	
-\usepackage{pgf}
-\usepackage[framemethod=tikz]{mdframed}
-\\newmdenv[frametitle=Running it,backgroundcolor=gray!05,roundcorner=2pt]{run}
+\\usepackage{fancyvrb}
+\\usepackage{tikz}
+\\usetikzlibrary{arrows,mindmap,backgrounds}
+\\usepackage{fancyhdr}
+\\usepackage{listing}
+\\usepackage{needspace}
+\\usepackage{amsmath}
+\\usepackage{graphicx}
+\\usepackage{capt-of}
+\\usepackage{ragged2e}
+\\usepackage[parfill]{parskip}
+\\usepackage{ctable}
+\\usepackage{xcolor}
+\\usepackage{colortbl}	
+\\usepackage{pgf}
+\\usepackage[framemethod=tikz]{mdframed}
+\\newmdenv[frametitle=Example,skipabove=1em,backgroundcolor=gray!05,roundcorner=2pt]{run}
 
 % --------------
 % tikz
 % --------------
-%\usepackage{tikz}
-%\usetikzlibrary{calc} 
-%\usetikzlibrary{decorations}
-%\usetikzlibrary{plotmarks}
-%\usetikzlibrary{arrows}
-%\usetikzlibrary{chains,fit,shapes}
+%\\usepackage{tikz}
+%\\usetikzlibrary{calc} 
+%\\usetikzlibrary{decorations}
+%\\usetikzlibrary{plotmarks}
+%\\usetikzlibrary{arrows}
+%\\usetikzlibrary{chains,fit,shapes}
 
-\usepackage{hyperref}
-\hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
+\\usepackage[utf8]{inputenc}
+
+\\usepackage{hyperref}
+
+\\hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
 \\author{Martin Drautzburg}
-\\title{XXX}
-\\begin{document} \maketitle 
+\\title{xxx}
+
+\\begin{document} \\maketitle 
 
 \\begin{abstract}
 \\end{abstract}
 
 
 \\tableofcontents 
-\listoffigures
+\\listoffigures
 
-\section{Introduction}
 
+\\hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
 %\\begin{figure}[htb!]
 %\\centering
-%\includegraphics[width=4cm]{glass-slipper.jpg}
+%\\includegraphics[width=4cm]{glass-slipper.jpg}
 %\\end{figure}
-
 \\end{document}
+
 endef
