@@ -1,0 +1,41 @@
+The IO-type can be seen as the real program that actually
+executes. You may picture this program as a number of code-lines,
+stored somewhere in memory.
+
+It is written in a language, you may want to call "IO". Just as you
+may may see "C" of "java" as types, because they stand for a set of
+possible values, namely all C or java Programs, you may consider this
+"IO" language a type.
+
+The type of main is indeed IO, or actually "IO ()" - we'll come to
+that "()" later. That means, the purpose of main is to construct a
+value of type IO (), which is the same thing as writing a program in
+that IO language.
+
+Having a program write a program is quite commonplace. In jdbc you
+need to assemble an SQL string and pass it to jdbc. The SQL string
+often contains undefined variables, whose values you have to pass in
+additional arguments. This makes the same SQL string reusable with
+different values for the variables. But you can also use any kind of
+string magic to assemble the SQL string from reusable pieces. You are
+indeed assembling a program.
+
+This is all nice and good as long as our programs are on-shot
+operations, like a SELECT. Within that SQL string, there is not a word
+about what you want to do with the returned data. Now what?
+
+In jdbc you just pass the data to java, and it works, but at the cost
+of having to use impure functions.
+
+In Haskell things are different. When the program runs it calls main
+and executes the program it generated. But this program is not
+complete. Imagine the program sarted with an SQL statement. That's all
+main would actually program, except it also provides a new function,
+to which the result data shall be passed. When the data is available
+this new function gets called and writes the next piece of the IO
+Program. It is like a callback from the IO program to another program
+to write its next piece.
+
+The called functions can all be pure and stateless. They receive
+whatever came back from the real world and return IO program code.
+
