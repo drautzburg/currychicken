@@ -1,0 +1,25 @@
+digraph d {
+	node [fontname = "Arial"];
+	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
+
+	rankdir=LR
+	subgraph nest {
+		node [shape=invtrapezium, style=filled, fillcolor="#FFDDDD", fixedsize=true, width=0.6]
+		}		
+	subgraph list {
+		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
+		yi[label="yi"]
+		}
+	subgraph product {
+		node [shape=Mcircle, style=filled, fillcolor="#DDFFDD", fixedsize=true, width=0.6]
+		xi1[label="xi1"]
+		xi2[label="xi2"]
+		}
+	subgraph process {
+		node [shape=box, style=rounded]
+		S
+	}
+yi -> S -> xi1
+S -> xi2
+
+}

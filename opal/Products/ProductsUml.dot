@@ -1,0 +1,26 @@
+
+
+digraph d {
+	splines=false
+	node [fontname = "Arial", shape="record"];
+	edge [fontname = "Arial", fontsize=11,color="#999999", penwidth=2, weight=1];
+
+
+	List[label="List"]	
+	Nest[label="{Nest|+label : lty\l}"]	
+	Product[label="Product"]	
+
+
+	List -> Nest [arrowhead="none", label="\n*   includes>   *"]
+	List -> Nest [arrowhead="none", label="1     <contains  0..1"]
+
+
+	
+
+	{rank=same; List Nest}
+
+	Product -> List [arrowtail="empty", dir="back"]
+	Product -> Nest [arrowtail="empty", dir="back"]
+
+
+}

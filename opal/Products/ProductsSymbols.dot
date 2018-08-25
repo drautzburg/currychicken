@@ -1,0 +1,28 @@
+digraph d {
+	nodesep=0.7
+	rankdir=LR
+	node [fontname = "Arial"];
+	edge [fontname = "Arial", fontsize=11,color=black, penwidth=1.5, weight=1];
+
+	subgraph prodIn {
+		node [shape=circle, style=filled, fillcolor="#DDDDFF", fixedsize=true, width=0.6]
+		pin1[label=Px1]
+		pin2[label=Px2]
+		}
+
+	subgraph prodOur {
+		node [shape=circle, style=filled, fillcolor="#DDFFDD", fixedsize=true, width=0.6]
+		pout1[label=Py1]
+		pout2[label=Py2]
+		}
+
+	subgraph process {
+		node [label="Process" shape=box, style=rounded]
+		process
+	}
+
+	pout1 -> process [arrowhead=onormal]
+	pout2 -> process [arrowhead=onormal]
+	process -> pin1 [arrowhead=onormal]
+	process -> pin2 [arrowhead=onormal]
+}
