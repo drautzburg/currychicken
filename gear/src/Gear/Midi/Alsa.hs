@@ -42,7 +42,7 @@ import qualified Sound.ALSA.Sequencer as SndSeq
 
 -- | Opaque wrapper around several alsa types.        
 data Ifc = Ifc {
-            h      ::SndSeq.T SndSeq.DuplexMode,
+            h      :: SndSeq.T SndSeq.DuplexMode,
             client :: Client.T,
             port   :: Port.T,
             conn   :: Conn.T,
@@ -88,7 +88,7 @@ listPorts = do
                (Port.capSubsWrite, 'W') :
                [])
                                           
--- | Creates an 'Ifc' to the given client (MIDI device). This is
+-- | Creates an 'Ifc' to the given MIDI device (client). This is
 -- typically done at the beginning of playback. With the ports from
 -- the example above, you'll get
 --
@@ -155,7 +155,9 @@ send evts ifc= do
             -- Evt.outputPending h
         (return . maximum . map fst) evts
 
--- | Block until all events before 'Tick' have been delivered
+-- | Block until all events before 'Tick' have been delivered. This is
+-- achieved by sending an 'Evt.Echo' event to ourselves.
+
 blockUntil :: Tick -> Ifc -> IO()                                     
 blockUntil t ifc = let (Ifc h client port conn queue) = ifc
                        me = Addr.Cons client port

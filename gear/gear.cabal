@@ -16,9 +16,9 @@ extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Gear.Midi.Alsa
+  exposed-modules:     Gear.Midi.Alsa Gear.FrpTb Gear.FrpSmooth Gear.Player.Guitar,Gear.Midi.Track
   -- other-modules:       
-  other-extensions:    DeriveFunctor, BangPatterns
-  build-depends:       QuickCheck >=2.10 && <2.11, alsa-core >=0.5 && <0.6, alsa-seq >=0.6 && <0.7, base >=4.9 && <4.10, binary >=0.8 && <0.9, bytestring >=0.10 && <0.11, directory >=1.2 && <1.3, enumset, event-list >=0.1 && <0.2, explicit-exception >=0.1 && <0.2, midi-alsa >=0.2 && <0.3, monoid-transformer >=0.0 && <0.1, mtl >= 2.2.1, non-negative >=0.1 && <0.2, parsec >=3.1 && <3.2, pretty-simple >=2.0 && <2.1, random >=1.1 && <1.2, text >=1.2 && <1.3, transformers >=0.5 && <0.6, utility-ht >=0.0 && <0.1
+  other-extensions:    DeriveFunctor, BangPatterns, TypeSynonymInstances
+  build-depends:       base >=4.10 && <4.11, event-list >=0.1 && <0.2, QuickCheck >=2.12 && <2.13, enumset >=0.0 && <0.1, pretty-simple >=2.2 && <2.3, alsa-seq >=0.6 && <0.7, utility-ht >=0.0 && <0.1, random >=1.1 && <1.2, transformers >=0.5 && <0.6, explicit-exception >=0.1 && <0.2, bytestring >=0.10 && <0.11, non-negative >=0.1 && <0.2, monoid-transformer >=0.0 && <0.1, binary >=0.8 && <0.9, Euterpea, CommonFormatting, midi
   hs-source-dirs:      src
   default-language:    Haskell2010
