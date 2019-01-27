@@ -17,11 +17,14 @@ module Gear.Player.Guitar where
 import Control.Monad.Trans.State.Lazy
 import CommonFormatting
 import Data.Ratio
-import Euterpea.Music hiding (Dur)
+import Control.Monad.Trans.Writer.Lazy
+import Euterpea.Music (Pitch, Volume, PitchClass(..))
 import qualified Euterpea.IO.MIDI.MEvent as EE
 import qualified Euterpea.IO.MIDI.Play  as EP
 import qualified Data.EventList.Absolute.TimeBody as Tb
-import Gear.Frp -- xxx TimeBody?
+
+import Gear.FrpTb 
+import Gear.Midi.Track
 
 type Time = Rational
 type Dur  = Rational
@@ -71,33 +74,98 @@ stdBassStrings = [(E,1), (A,1), (D,2),(G,2)]
 stdBass :: GuitarState
 stdBass = GuitarState (map stringState stdBassStrings) 0 100
 
--- | get the available strings from a GuitarState
-getStrings :: GuitarState -> [GString]
-getStrings = map tuning . strings
+-- * State updating TODO need beautification
+
+-- type Lens a = GuitarState -> (a, a->GuitarState->GuitarState) TODO
+-- getStringState :: GString -> Lens StringState
+-- getStringState str gs = find ((== str) . tuning) strings gs
+
+setStringStates :: (StringState -> StringState) -> GuitarState -> GuitarState
+setStringStates fup gs = gs{strings = fmap fup (strings gs)}
+
+onString str fup  ss 
+  | tuning ss == str = fup ss
+  | otherwise = ss
+
+                            
+
+-- -> GuitarState -> (Track, GuitarState)
+-- | modify the state of a particular string
+-- updStringState  :: Upd StringState -> Rnd GuitarState
+-- updStringState = undefined
+-- updStringState str fup gs = let tf s q
+--                                   |tuning s == q = fup s
+--                                   |otherwise     = s
+--                             in traverse tf (strings gs) str
 
 -- * Player Actions
 
 -- | What a guitarist can do to a string
-data StringAct = DoOpen | DoDamp | DoFret Int | DoBend DPitch | DoPluck Volume
+data StringAct = DoFret FretState | DoBend DPitch | DoPluck Volume
   deriving (Eq, Show)
 
 -- | What a guitarist can do to the whole Guitar
-data GuitarAct = DoString StringAct GString |
+data GuitarAct = DoString GString StringAct |
                  DoWhammy DPitch |
                  DoVolume Volume
   deriving (Eq, Show)
 
                   
 -- | A list of 'GuitarAct's with the time of occurrence                  
-type GuitarEvts = Events Time GuitarAct
+type GuitarScore = Events Time GuitarAct
 
 -- * Higher-level Actions
 
--- | Generate 'GuitarEvts' representing a strum across all Strings (lowest to highest)
-strumDown :: [GString] -> Dur -> Volume -> Time -> GuitarEvts
-strumDown strings dt vol t  = let acts = (fmap . DoString) (DoPluck vol) strings
-                                  times = iterate (+ dt) t
-                              in fromPairList $ zip times acts
+-- | Generate 'GuitarScore' representing a strum across all Strings (lowest to highest)
+-- strumDown :: [GString] -> Dur -> Volume -> Time -> GuitarScore
+-- strumDown strings dt vol t  = let acts = (fmap . DoString) (DoPluck vol) strings
+--                                   times = iterate (+ dt) t
+--                               in fromPairList $ zip times acts
 
 -- | Strum from highest to lowest string
-strumUp = strumDown . reverse 
+-- strumUp = strumDown . reverse 
+
+-- * Rendering
+
+-- Rendering is composed from function of this type. TODO: Tempo
+type RenderF = Time -> GuitarAct -> GuitarState -> (Track, GuitarState)
+type Renderer = (Time, GuitarAct) -> State GuitarState Track
+
+toRenderer :: RenderF -> Renderer
+toRenderer rf = let f (t,g) = state (\s -> rf t g s)
+                in f
+
+
+-- | Return Tracks and the final state like runState)
+runRenderer :: GuitarScore -> GuitarState -> ([Track], GuitarState)
+runRenderer = runState . mapM theRenderer . Tb.toPairList
+
+-- | Return a single, merged Track
+render score = let (tracks, s) = runRenderer score stdGuitar
+               in merge tracks
+
+theRenderer :: Renderer
+theRenderer = let r t (DoString str (DoFret fs)) = setFret str fs
+                  r t (DoString str (DoPluck v)) = undefined
+                  r t  _                         = undefined
+              in toRenderer r
+
+
+setFret :: GString -> FretState -> GuitarState -> (Track, GuitarState)
+setFret str fs gs = let set f' ss = ss{fret = f'}
+              in (emptyTrack, (setStringStates . onString str . set) fs gs)
+
+
+exE = [
+  (1%4, DoString (E,2) $ DoFret (Fret 4)),
+  (1%4, DoString (E,2) $ DoPluck 80),
+  (1%4, DoString (E,2) $ DoFret (Fret 4))
+  ]
+
+
+
+exS = fromPairList exE :: GuitarScore
+
+
+
+

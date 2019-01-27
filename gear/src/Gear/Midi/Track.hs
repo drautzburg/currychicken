@@ -88,6 +88,8 @@ type PPQ = Int
 
 -- | Sound.MIDI.File.Event.T (Event body)
 type Evtb = Fevt.T
+
+type Track = F.Track
 ------------------------------------------------------------
 -- * Creating Voice events
 
@@ -95,7 +97,7 @@ type Evtb = Fevt.T
 vChan :: Ch -> McVoice.T -> Evtb
 vChan ch = Fevt.MIDIEvent . Mchan.Cons (Mchan.toChannel ch) . Mchan.Voice
 
--- insertEvt :: Tick -> Evtb -> F.Track -> F.Track
+-- insertEvt :: Tick -> Evtb -> Track -> Track
 
 
 -- | create a noteOn 'Evtb' from channel, note-number and velocity
@@ -151,35 +153,37 @@ allSoundOff ch = mChan ch McMode.AllSoundOff
 ------------------------------------------------------------
 -- * Adding events to a Track
 
-emptyTrack :: F.Track
+emptyTrack :: Track
 emptyTrack = Tb.empty
 
 -- | insert a single event to a Track
-insertEvt :: Tick -> Evtb -> F.Track -> F.Track
+insertEvt :: Tick -> Evtb -> Track -> Track
 insertEvt = Tb.insert . Fevt.toElapsedTime
 
 -- | insert a whole lot of events into a Track
-insertEvts :: Foldable t => F.Track -> t (Tick, Evtb) -> F.Track
+insertEvts :: Foldable t => Track -> t (Tick, Evtb) -> Track
 insertEvts = foldr (uncurry insertEvt)
 
 -- | insert a whole lot of events into an empty Track
-fromList :: Foldable t => t (Tick, Evtb) -> F.Track
+fromList :: Foldable t => t (Tick, Evtb) -> Track
 fromList = insertEvts emptyTrack
 
 -- | delay second track by duration of first track and append
-append :: F.Track -> F.Track -> F.Track
+append :: Track -> Track -> Track
 append = Tb.append
 
+merge :: [Track] -> Track
+merge = F.mergeTracks F.Mixed
 ------------------------------------------------------------
 -- * Saving and restoring Tracks.
 
 
 -- | Add tempo (ppq) to a list of tracks and save them
-saveTracks :: FilePath -> PPQ -> [F.Track] -> IO()
+saveTracks :: FilePath -> PPQ -> [Track] -> IO()
 saveTracks filename ppq = Fsav.toFile filename . (F.Cons F.Mixed . F.Ticks . F.toTempo) ppq
 
 -- | Load a file and return the Tracks and the tempo
-loadTracks :: FilePath -> IO ([F.Track],PPQ)
+loadTracks :: FilePath -> IO ([Track],PPQ)
 loadTracks filename = do
   (F.Cons typ (F.Ticks ppq) tracks) <- Flod.fromFile filename
   return (tracks, F.fromTempo ppq)
@@ -188,7 +192,7 @@ loadTracks filename = do
 -- * Example
 
 -- | Reset and set pitch bend range to 12 
-initInstrument :: Ch -> F.Track 
+initInstrument :: Ch -> Track 
 initInstrument ch = fromList [
   -- reset
   (0, resetAllControllers ch),
@@ -205,7 +209,7 @@ initInstrument ch = fromList [
 
 
 -- | A C-minor chord with pitch bend
-exampleTrack :: F.Track 
+exampleTrack :: Track 
 exampleTrack = initInstrument 1 
   `append` fromList [
   (0,  noteOn 1 60 80),
