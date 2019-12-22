@@ -29,20 +29,19 @@ TODO
 
 -}      
 module Gear.Midi.Track where
-import Data.Ratio
 
 -- Sound.ALSA.Sequencer
-import qualified Sound.ALSA.Sequencer.Address as Addr
-import qualified Sound.ALSA.Sequencer.Client as Scl
-import qualified Sound.ALSA.Sequencer.Client.Info as Sci
-import qualified Sound.ALSA.Sequencer.Port as Sport
-import qualified Sound.ALSA.Sequencer.Port.Info as Sporti
-import qualified Sound.ALSA.Sequencer.Event as Sevt
-import qualified Sound.ALSA.Sequencer.Queue as Squeue
-import qualified Sound.ALSA.Sequencer.Queue.Tempo as SqTempo
-import qualified Sound.ALSA.Sequencer.Time as STime
-import qualified Sound.ALSA.Sequencer.Connect as Sconn
-import qualified Sound.ALSA.Sequencer as S
+-- import qualified Sound.ALSA.Sequencer.Address as Addr
+-- import qualified Sound.ALSA.Sequencer.Client as Scl
+-- import qualified Sound.ALSA.Sequencer.Client.Info as Sci
+-- import qualified Sound.ALSA.Sequencer.Port as Sport
+-- import qualified Sound.ALSA.Sequencer.Port.Info as Sporti
+-- import qualified Sound.ALSA.Sequencer.Event as Sevt
+-- import qualified Sound.ALSA.Sequencer.Queue as Squeue
+-- import qualified Sound.ALSA.Sequencer.Queue.Tempo as SqTempo
+-- import qualified Sound.ALSA.Sequencer.Time as STime
+-- import qualified Sound.ALSA.Sequencer.Connect as Sconn
+-- import qualified Sound.ALSA.Sequencer as S
 
 -- Sound MIDI:
 --import qualified Sound.MIDI.Message.Channel.Voice as Mvoice

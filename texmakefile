@@ -1,30 +1,67 @@
 
+export GITIGNORE_ALL
 export DFD_STORE
 export EMPTY_LHS
 
+# ------------------------------------------------------------
+# Verbosity
+# ------------------------------------------------------------
+from =  echo "  from: $?"
+why = printf "* Making: $@\n" ; $(from)
 
-%.eps: %.dot
-	dot -T eps -l dfd.ps $? > $@
 
-%.jpeg: %.dot
-	dot -T jpeg -l dfd.ps $? > $@
+# ------------------------------------------------------------
+# how to call LaTeX
+# ------------------------------------------------------------
+pdfLatex = pdflatex -halt-on-error -interaction=errorstopmode 
 
-%.jpeg: %.dot
-	dot -T jpeg -l dfd.ps $? > $@
+# handmade LaTeX call
+LatexCrude = $(pdfLatex) $(notdir $<)
 
+# using latexmk to invoke texfot to invode pfdlatex
+texIgnore = Overful|Underfull|Font Warning|This.is|Collected|Package|Latexmk
+LatexMk = texfot --no-stderr --ignore "$(texIgnore)" --quiet latexmk -pdf -pdflatex=$(pdfLatex)  $(notdir $<)
+
+Latex = $(LatexMk)
+
+# ------------------------------------------------------------
+# creating pdf files
+# ------------------------------------------------------------
 %.pdf: %.eps
+	$(why)
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
-$(DOC)/%.tex: %.lhs
-#	../unhaddock $?  > $(DOC)/xxx$?
+%.pdf: %.tex
+	$(why)
+	cd $(dir $@) ; $(Latex) 
+
+# ------------------------------------------------------------
+# creating image files via graphviz
+# ------------------------------------------------------------
+
+%.eps $(DOC)/%.eps: %.dot
+	$(why)
+	dot -T eps -l dfd.ps $? -o $@
+
+%.jpeg $(DOC)/%.jepg: %.dot
+	$(why)
+	dot -T jpeg -l dfd.ps $? -o $@
+
+
+# ------------------------------------------------------------
+# lhs2TeX
+# ------------------------------------------------------------
+
+
+$(DOC)/%.tex %.tex: %.lhs
+	$(why)
 	lhs2TeX --tt $? > $@
 
-%.tex: %.lhs
-#	../unhaddock $?  > xxx$?
-#	lhs2TeX --tt xxx$? > $@
-	lhs2TeX --tt $? > $@
-
+# ------------------------------------------------------------
+# Haskell profiling
+# ------------------------------------------------------------
 %.heap: %.hs
+	$(why)
 #	ghc -O2 -prof -auto-all -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
 	ghc -O2 -prof -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
 #	$(?:.hs=) +RTS -hc -p
@@ -33,40 +70,45 @@ $(DOC)/%.tex: %.lhs
 	okular $(?:.hs=.ps) 2>/dev/null &
 
 %.prof: %.hs
+	$(why)
 	ghc -O2 -prof -auto-all -caf-all -rtsopts -fforce-recomp $?
 	$(@:.prof=) +RTS -p -RTS
 
 
-%.pdf: %.tex
-#	pdflatex -interaction=batchmode $? 
-	cd $(dir $@); pdflatex $(notdir $<)
-#	lualatex --output-format=pdf $<
+# ------------------------------------------------------------
+# Cleanup
+# ------------------------------------------------------------
+texFiles = *.pdf *.dvi *.fdb_latexmk *.fls *.tex *.toc *.aux *.lof *.log
+ghcFiles = *.hi  *.o *.out *.prof heaptest* a.out  
+bakFiles = *~ xx*
+tmpFiles = $(texFiles) $(ghcFiles) $(bakFiles)
 
+# ------------------------------------------------------------
+# Miscellaneous
+# ------------------------------------------------------------
 %.view: %.pdf
 	"C:/Program Files/SumatraPDF/sumatrapdf" $? &
-
-dfd.ps:
-	echo "$$DFD_STORE" > dfd.ps
-
-%.lhs:
-	echo  "$$EMPTY_LHS" > $@
-
-
-touch:
-	touch *.lhs
-
-clean:
-	rm -f *.pdf  *.png *.tex *.toc *.aux *.hi *.lof *.o *.out *.prof heaptest* *.log *~ 
-
-
 
 
 # ------------------------------------------------------------
 # verbatim files
 # ------------------------------------------------------------
+%.docnew:
+	mkdir doc
+	echo "$$GITIGNORE_ALL" > doc/.gitignore
+
+
+
+# dataflow diagram ps file
+%.dfdnew:
+	echo "$$DFD_STORE" > $(dir $@)/dfd.ps
+
+%.lhsnew:
+	echo  "$$EMPTY_LHS" > $(@:.lhsnew=.lhs)
+
+
 
 # --- postscript file for dataflow store component (dfd.ps) ---
-
 define DFD_STORE
 /dfd_store {
         {
@@ -155,4 +197,12 @@ define EMPTY_LHS
 %\\end{figure}
 \\end{document}
 
+endef
+
+
+define GITIGNORE_ALL
+# Ignore everything in this directory
+*
+# Except this file
+!.gitignore
 endef

@@ -1,5 +1,5 @@
 DOC = doc
-texfiles = Gear.tex playChords.tex render.tex renderMidi.tex
+texfiles = Gear.tex playChords.tex render.tex renderMidi.tex combiningScores.tex
 TEXFILES = $(addprefix $(DOC)/,$(texfiles))
 
 

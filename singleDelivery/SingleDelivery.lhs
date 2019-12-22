@@ -3,9 +3,6 @@
 %include lhs2TeX.fmt
 %include colorcode.fmt
 %include greek.fmt
-\renewcommand{\hscodestyle}{\small}
-\definecolor{codecolor}{rgb}{0.95,0.95,1}
-\colorhs
 \usepackage{graphicx}
 \usepackage{amssymb,amsmath}
 \usepackage{cancel}
@@ -18,11 +15,12 @@
 \usepackage{capt-of}
 \usepackage{ragged2e}
 \usepackage[parfill]{parskip}
-\usepackage{ctable}
 \usepackage{color}
 \usepackage{colortbl}	
 \usepackage{eurosym}
 \usepackage{tikz}
+\usepackage{ctable}
+
 \usetikzlibrary{calc} 
 \usetikzlibrary{decorations}
 \usetikzlibrary{plotmarks}
@@ -55,7 +53,7 @@
 
 \begin{figure}[htb!]
 \centering
-\includegraphics[width=4cm]{glass-slipper.jpg}
+\includegraphics[width=4cm]{../glass-slipper.jpg}
 \end{figure}
 
 \tableofcontents 
@@ -79,7 +77,6 @@ module SingleDelivery where
 import Mail
 import Plot
 import Data.List
-import Data.List.Utils
 import Text.Printf
 \end{code}
 

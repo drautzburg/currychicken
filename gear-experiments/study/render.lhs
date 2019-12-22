@@ -2,8 +2,8 @@
 %include greek.fmt
 %options ghci -fglasgow-exts
 
-\subsection{Rendering}
-\subsubsection{Problem Statement}
+\section{Player Rendering}\label{sect:Rendering}
+\subsection{Problem Statement}
 
 Suppose we have different Players, e.g. a piano player and a guitar
 player. Each of the players reads a score, which is specific to his
@@ -17,7 +17,7 @@ There is a limited number of midi devices, each having a number of
 channels. One player must not use a device/channel combination, which
 is already used by another player
 
-\subsubsection{Clarifications}
+\subsection{Clarifications}
 
 Initially there is a collection of Devices and Channels. A Device is
 identified by its name.
@@ -32,9 +32,9 @@ type Channel = Int
 type ChannelPool = [(Device, Channel)]
 \end{code}
 
-All players produce the same type of output, namely a MidiScore. We
-won't define what a MidiScore is, but we'll assume it can be
-transformed into an IO action.
+\newcommand\txtmidiscore{All players produce the same type of output,
+namely a MidiScore}\txtmidiscore{}. We won't define what a MidiScore
+is, but we'll assume it can be transformed into an IO action.
 
 \begin{code}
 data MidiScore
@@ -53,7 +53,7 @@ instance Monoid MidiScore where
     mappend = undefined
 \end{code}
 
-\subsubsection{A possible solution}
+\subsection{A possible solution}
 
 Consider a guitar player:
 

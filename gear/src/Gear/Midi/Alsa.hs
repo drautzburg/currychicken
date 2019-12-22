@@ -14,13 +14,15 @@ short sequences of Midi Events.
 -}      
 module Gear.Midi.Alsa where
 import GHC.Word
-import GHC.Int
 import Control.Monad
 import qualified Data.EnumSet as EnumSet
 import Text.Printf (printf, )
 import qualified Text.Pretty.Simple as P
 import Data.Ratio
 
+import Data.Foldable (traverse_)
+import Control.Applicative
+import Data.Semigroup (Max(..))
 -- Sound.ALSA.Sequencer
 import qualified Sound.ALSA.Sequencer.Address as Addr
 import qualified Sound.ALSA.Sequencer.Client as Client
@@ -34,20 +36,15 @@ import qualified Sound.ALSA.Sequencer.Time as Time
 import qualified Sound.ALSA.Sequencer.Connect as Conn
 import qualified Sound.ALSA.Sequencer as SndSeq
 
--- Sound MIDI:
---import qualified Sound.MIDI.Message.Channel.Voice as Mvoice
---import qualified Sound.MIDI.Message.Channel as Mchan
---import qualified Sound.MIDI.ALSA as Midi
-
-
 -- | Opaque wrapper around several alsa types.        
 data Ifc = Ifc {
-            h      :: SndSeq.T SndSeq.DuplexMode,
-            client :: Client.T,
-            port   :: Port.T,
-            conn   :: Conn.T,
-            queue  :: Queue.T
-            }
+  name   :: String,
+  h      :: SndSeq.T SndSeq.DuplexMode,
+  client :: Client.T,
+  port   :: Port.T,
+  conn   :: Conn.T,
+  queue  :: Queue.T
+  }
 
 -- * Opening and closing
 
@@ -98,37 +95,40 @@ listPorts = do
 -- >>> open "20:1"    
 -- *** Exception: AlsaException.Cons "connect_to" "Invalid argument" (Errno 22)
 open :: String -> IO Ifc
-open name = do
+open ifcName = do
     h <- SndSeq.openDefault SndSeq.Block :: IO (SndSeq.T SndSeq.DuplexMode)
     Client.setName h "Gear"             -- client name
-    port <- Port.createSimple h name
+    port <- Port.createSimple h ifcName
             (Port.caps [Port.capRead, Port.capSubsRead, Port.capWrite])
             (Port.types [Port.typeMidiGeneric, Port.typeApplication])
     client <- Client.getId h 
-    addr <- Addr.parse h name -- "ESS"          -- interface (soundcard) name
+    addr <- Addr.parse h ifcName -- "ESS"          -- interface (soundcard) name
     conn <- Conn.createTo h port addr
     -- TODO: with multiple synths, one queue for all would suffice.
     queue <- Queue.alloc h
     setTempoDefault h queue
     Queue.control h queue Evt.QueueStart Nothing
+    putStrLn ("opened Ifc " ++ ifcName)
     printTempo h queue
     -- Queue.control h queue (Evt.QueueTempo qTempo ) Nothing -- tempo
 
 
-    return $ Ifc h client port conn queue
+    return $ Ifc ifcName h client port conn queue
 
 -- | Closes the 'Ifc'. This is typically done at the end of
 -- playback. You can observe 'Gear' opening and closing on the @Alsa@
 -- tab of qjackctl.
 close :: Ifc -> IO ()                                             
 close ifc = 
-    let (Ifc h client port conn queue) = ifc
+    let (Ifc name h client port conn queue) = ifc
     in do
         Evt.drainOutput h
-        Evt.outputPending h >>= (putStrLn . show)
-        putStrLn "done"                       -- cleanup
+        pending <- Evt.outputPending h 
+        putStrLn $ "Events pending = " ++ (show pending)
+        putStrLn ("closed Ifc " ++ name)
         Queue.control h  queue Evt.QueueStop Nothing
         Port.delete h port
+        putStrLn "..."
 
 
 -- * Sending data
@@ -140,29 +140,42 @@ type Evt = (Tick, Evt.Data)
 tLast :: [Evt] -> Tick
 tLast = maximum . map fst 
 
-
--- | Send events to 'Ifc' and return the 'Tick' of the last event
-send :: [Evt] -> Ifc -> IO Tick
-send evts ifc= do
-        let (Ifc h client port conn queue) = ifc
-            evt (t,e) = (Evt.forConnection conn e) {
+-- | Send a single Event, return its Tick
+sendEvt :: Ifc -> Evt -> IO Tick
+sendEvt ifc evt = do
+        let (Ifc name h client port conn queue) = ifc
+            toEvt (t,e) = (Evt.forConnection conn e) {
                             Evt.queue = queue,
                             Evt.time = Time.consAbs $ Time.Tick t
                         }
-         
-        mapM_ (Evt.output h . evt) evts
-        Evt.drainOutput h 
-            -- Evt.outputPending h
-        (return . maximum . map fst) evts
+          in do
+                Evt.output h (toEvt evt)
+                return (fst evt)
+                
+-- | Send a a list of Events, drain output, return latest Tick
+sendEvts :: Ifc -> [Evt] -> IO Tick
+sendEvts ifc evts = let sendEvt' e = Max <$> sendEvt ifc e
+                    in
+                      do
+                        tMax <- foldMap sendEvt' evts
+                        Evt.drainOutput (h ifc)
+                        -- Evt.outputPending (h ifc)
+                        return (getMax tMax)
 
--- | Block until all events before 'Tick' have been delivered. This is
--- achieved by sending an 'Evt.Echo' event to ourselves.
+-- | play Events over the interface with the given name. Block until done
+play ifcName evts = do
+  ifc <- open ifcName
+  tlast <- sendEvts ifc evts
+  blockUntil ifc tlast
+  close ifc
+  
+  
 
-blockUntil :: Tick -> Ifc -> IO()                                     
-blockUntil t ifc = let (Ifc h client port conn queue) = ifc
+blockUntil :: Ifc -> Tick -> IO()                                     
+blockUntil ifc t = let (Ifc name h client port conn queue) = ifc
                        me = Addr.Cons client port
                        sendEcho = do
-                           putStrLn $ "sending Echo at " ++ (show t)
+                           putStr $ "blocking until " ++ (show t) ++ " ... "
                            Evt.output h (Evt.forConnection conn (Evt.CustomEv Evt.Echo $ Evt.Custom 0 0 0)){
                                       Evt.queue = queue,
                                       Evt.dest = me,
@@ -175,7 +188,7 @@ blockUntil t ifc = let (Ifc h client port conn queue) = ifc
                        waitForEcho = do
                            event <- Evt.input h                                
                            when (not $ isEcho event) waitForEcho 
-                           putStrLn $ "Received echo at t=" ++ (show $ Evt.time event)
+                           putStrLn $ " done t=" ++ (show $ Evt.time event)
                   in sendEcho >> waitForEcho
            
 -- * Time and Tempo
@@ -193,7 +206,7 @@ blockUntil t ifc = let (Ifc h client port conn queue) = ifc
 
 setTempoDefault h queue = do
     qt <- Tempo.get h queue
-    Tempo.setPPQ qt ppq
+    Tempo.setPPQ qt defaultPpq
     Tempo.setTempo qt 500000
     Tempo.set h queue qt
 
@@ -205,11 +218,11 @@ type Wholes = Ratio Int
 
 -- | Pulses per quarter note. We use a higher resolution of 4*96
 -- instead of the standard 96 PPQ.
-ppq = 4*96 :: Int
+defaultPpq = 4*96 :: Int
 
 -- | Convert 'Wholes'  to 'Tick's. 
-ticks :: Wholes -> Tick
-ticks qn = fromIntegral $ numerator qn * ppq * 4 `div` denominator qn
+fromWholes :: Wholes -> Tick
+fromWholes qn = fromIntegral $ numerator qn * defaultPpq * 4 `div` denominator qn
 
 -- | Print ppq and tempo for debugging             
 printTempo h queue =
@@ -237,40 +250,29 @@ exampleEvts = let
                 noteOn, noteOff :: Pitch -> Vel -> Evt.Data 
                 noteOn  p v   = Evt.NoteEv Evt.NoteOn  $ noteEv p v :: Evt.Data
                 noteOff p v   = Evt.NoteEv Evt.NoteOff $ noteEv p v :: Evt.Data
-                note t p v = [(ticks t, noteOn p v),
-                              (ticks (t+1 ), noteOff p v)
-                             ]
-                
-                arp :: Wholes -> [Word8] -> [Evt]
-                arp t keys = note (t+0%4) (keys !! 0) 40 ++
-                             note (t+1%4) (keys !! 1) 30 ++
-                             note (t+2%4) (keys !! 2) 35 ++
-                             note (t+3%4) (keys !! 3) 30
-                chord t keys = note (t+0%32) (keys !! 0) 35 ++
-                               note (t+1%32) (keys !! 1) 30 ++
-                               note (t+3%32) (keys !! 2) 33 ++
-                               note (t+6%32) (keys !! 3) 30
-              in
-                  arp  0 [60,64,67,71]  ++ -- Cj7
-                  arp  1 [60,64,67,71]  ++
-                  arp  2 [60,64,67,69]  ++ -- Am6
-                  arp  3 [60,64,67,69]  ++
-                  arp  4 [60,62,65,71]  ++ -- Dm7
-                  arp  5 [60,62,65,69]  ++
-                  arp  6 [59,62,65,69]  ++ -- G7
-                  arp  7 [59,62,65,67]  ++
-                  chord 8 [60,62,64,67]
+                wholeNote :: Wholes -> Pitch -> Vel -> [Evt]
+                wholeNote t p v = [
+                  (fromWholes t, noteOn p v),
+                  (fromWholes (t+1 ), noteOff p v)
+                  ]
 
--- | Play the 'exampleEvts' via a client named @FLUID@. This function
--- uses 'open', 'send', 'blockUntil' and 'close'. 
+                arp :: Wholes -> Wholes -> [Pitch] -> [Evt]
+                arp t dt keys = join $ zipWith3 wholeNote [t, t+dt .. ] keys (cycle [35,30,33,30])
+              in
+                  arp  0 (1%4) [60,64,67,71]  ++ -- Cj7
+                  arp  1 (1%4) [60,64,67,71]  ++
+                  arp  2 (1%4) [60,64,67,69]  ++ -- Am6
+                  arp  3 (1%4) [60,64,67,69]  ++
+                  arp  4 (1%4) [60,62,65,71]  ++ -- Dm7
+                  arp  5 (1%4) [60,62,65,69]  ++
+                  arp  6 (1%4) [59,62,65,69]  ++ -- G7
+                  arp  7 (1%4) [59,62,65,67]  ++
+                  arp  8 (1%32) [60,62,64,67]
+
+-- | Play the 'exampleEvts' via a client named @ESS@. 
 
 examplePlay :: IO ()
-examplePlay = do
-    ifc <- open "FLUID"
-    t   <- send exampleEvts ifc
-    putStrLn $ "sent up to t=" ++ (show t)
-    blockUntil (t+1) ifc
-    close ifc
+examplePlay = play "ESS" exampleEvts
 
 
           

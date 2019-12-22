@@ -1,3 +1,6 @@
+%include lhs2TeX.fmt
+%include colorcode.fmt
+
 \section{Simulation}
 
 \subsection {Library code}
