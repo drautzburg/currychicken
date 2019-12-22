@@ -32,7 +32,7 @@ import qualified Sound.ALSA.Sequencer.Port.Info as PortInfo
 import qualified Sound.ALSA.Sequencer.Event as Evt
 import qualified Sound.ALSA.Sequencer.Queue as Queue
 import qualified Sound.ALSA.Sequencer.Queue.Tempo as Tempo
-import qualified Sound.ALSA.Sequencer.Time as Time
+import qualified Sound.ALSA.Sequencer.Time  as Time
 import qualified Sound.ALSA.Sequencer.Connect as Conn
 import qualified Sound.ALSA.Sequencer as SndSeq
 
@@ -89,27 +89,27 @@ listPorts = do
 -- typically done at the beginning of playback. With the ports from
 -- the example above, you'll get
 --
--- >>> open "20:0"    -- connects to 20:0    M Audio Audiophile 24/96
--- >>> open "M Audio" -- connects to 20:0    M Audio Audiophile 24/96
--- >>> open "M"       -- connects to 14:0    Midi Through
--- >>> open "20:1"    
+-- >>> openIfc "20:0"    -- connects to 20:0    M Audio Audiophile 24/96
+-- >>> openIfc "M Audio" -- connects to 20:0    M Audio Audiophile 24/96
+-- >>> openIfc "M"       -- connects to 14:0    Midi Through
+-- >>> openIfc "20:1"    
 -- *** Exception: AlsaException.Cons "connect_to" "Invalid argument" (Errno 22)
-open :: String -> IO Ifc
-open ifcName = do
+openIfc :: String -> IO Ifc
+openIfc ifcName = do
     h <- SndSeq.openDefault SndSeq.Block :: IO (SndSeq.T SndSeq.DuplexMode)
     Client.setName h "Gear"             -- client name
     port <- Port.createSimple h ifcName
             (Port.caps [Port.capRead, Port.capSubsRead, Port.capWrite])
             (Port.types [Port.typeMidiGeneric, Port.typeApplication])
     client <- Client.getId h 
-    addr <- Addr.parse h ifcName -- "ESS"          -- interface (soundcard) name
+    addr <- Addr.parse h ifcName           -- interface (soundcard) name
     conn <- Conn.createTo h port addr
     -- TODO: with multiple synths, one queue for all would suffice.
     queue <- Queue.alloc h
-    setTempoDefault h queue
+    qSetTempo h queue defaultPpq 120
     Queue.control h queue Evt.QueueStart Nothing
-    putStrLn ("opened Ifc " ++ ifcName)
-    printTempo h queue
+    putStrLn ("opened Ifc \"" ++ ifcName ++ "\"")
+    qPrintTempo h queue
     -- Queue.control h queue (Evt.QueueTempo qTempo ) Nothing -- tempo
 
 
@@ -118,18 +118,72 @@ open ifcName = do
 -- | Closes the 'Ifc'. This is typically done at the end of
 -- playback. You can observe 'Gear' opening and closing on the @Alsa@
 -- tab of qjackctl.
-close :: Ifc -> IO ()                                             
-close ifc = 
+closeIfc :: Ifc -> IO ()                                             
+closeIfc ifc = 
     let (Ifc name h client port conn queue) = ifc
     in do
         Evt.drainOutput h
-        pending <- Evt.outputPending h 
-        putStrLn $ "Events pending = " ++ (show pending)
-        putStrLn ("closed Ifc " ++ name)
+        printPending h
+        putStrLn ("closed Ifc \"" ++ name ++ "\"")
         Queue.control h  queue Evt.QueueStop Nothing
         Port.delete h port
         putStrLn "..."
 
+-- | Print the number of pending Evts
+printPending h = do
+  pending <- Evt.outputPending h 
+  putStrLn $ "Events pending = " ++ (show pending)
+
+           
+-- * Time and Tempo
+
+
+-- | Default pulses per quarter note. We use a higher resolution of
+-- 4*96 instead of the standard 96 PPQ. I don't see much reason to
+-- ever change this.
+defaultPpq = 4*96 :: Int
+
+-- | One quarter note has 'ppq' (pulses per quarter note) 'Tick's, one
+-- Tick is as long as 1/ppq of a quarter-note
+type Tick = Word32 -- apparently this is not exported from alsa-seq
+
+-- | Time as a fraction of a whole note (so @1%4@ is a quarter-note)
+type Wholes = Ratio Int
+
+-- | Convert 'Wholes'  to 'Tick's using 'defaultPpq'
+fromWholes :: Wholes -> Tick
+fromWholes qn = fromIntegral $ numerator qn * defaultPpq * 4 `div` denominator qn
+
+-- | There are two parameters to define the actual tempo, PPQ (pulse
+-- per quarter note) and MIDI tempo. The former defines the base
+-- resolution of the ticks, while the latter defines the beat tempo in
+-- microseconds (µsec/quarter-note). The larger the "tempo" the slower
+-- the songs plays.
+--
+-- See <http://mcs.une.edu.au/doc/alsa-lib-devel/doxygen/html/seq.html>
+--
+-- This function computes the tempo [µsec/quarter-note] from beats per
+-- minute
+qTempo :: Word -> Word
+qTempo bpm = 1000000 * 60 `div` bpm
+
+-- | Set tempo [µsec/quarter-note] and pulses per quarter-note of the
+-- queue
+qSetTempo :: SndSeq.T mode -> Queue.T -> Int -> Word -> IO ()
+qSetTempo h queue ppq bpm = do
+    qt <- Tempo.get h queue
+    Tempo.setPPQ qt ppq
+    Tempo.setTempo qt (qTempo bpm)
+    Tempo.set h queue qt
+
+-- | Print ppq and tempo for debugging             
+qPrintTempo h queue =
+        let 
+            tPrint lbl units x = printf "%-8s=%7d [%s]\n" lbl x units
+        in do
+            qt <- Tempo.get h queue
+            Tempo.getPPQ qt   >>= tPrint "PPQ" "ppq"
+            Tempo.getTempo qt >>= tPrint "tempo" "µsec/beat"
 
 -- * Sending data
 
@@ -158,19 +212,17 @@ sendEvts ifc evts = let sendEvt' e = Max <$> sendEvt ifc e
                     in
                       do
                         tMax <- foldMap sendEvt' evts
+                        printPending (h ifc)
                         Evt.drainOutput (h ifc)
-                        -- Evt.outputPending (h ifc)
                         return (getMax tMax)
 
 -- | play Events over the interface with the given name. Block until done
 play ifcName evts = do
-  ifc <- open ifcName
+  ifc <- openIfc ifcName
   tlast <- sendEvts ifc evts
   blockUntil ifc tlast
-  close ifc
+  closeIfc ifc
   
-  
-
 blockUntil :: Ifc -> Tick -> IO()                                     
 blockUntil ifc t = let (Ifc name h client port conn queue) = ifc
                        me = Addr.Cons client port
@@ -190,49 +242,6 @@ blockUntil ifc t = let (Ifc name h client port conn queue) = ifc
                            when (not $ isEcho event) waitForEcho 
                            putStrLn $ " done t=" ++ (show $ Evt.time event)
                   in sendEcho >> waitForEcho
-           
--- * Time and Tempo
-
--- | There are two parameters to define the actual tempo, PPQ (pulse per
--- quarter note) and MIDI tempo. The former defines the base resolution
--- of the ticks, while the latter defines the beat tempo in
--- microseconds (µsec/beat).
---
--- See <http://mcs.une.edu.au/doc/alsa-lib-devel/doxygen/html/seq.html>
---
--- This function sets PPQ='ppq' and tempo=500000 (120 BPM). The tempo
--- can be changed later by sending an Event.
-
-
-setTempoDefault h queue = do
-    qt <- Tempo.get h queue
-    Tempo.setPPQ qt defaultPpq
-    Tempo.setTempo qt 500000
-    Tempo.set h queue qt
-
--- | One qn has 'ppq' 'Tick's, one Tick is as long as 1/ppq of a qn (quarter-note)
-type Tick = Word32
-
--- | Time as a fraction of a whole note (so @1%4@ is a qn)
-type Wholes = Ratio Int
-
--- | Pulses per quarter note. We use a higher resolution of 4*96
--- instead of the standard 96 PPQ.
-defaultPpq = 4*96 :: Int
-
--- | Convert 'Wholes'  to 'Tick's. 
-fromWholes :: Wholes -> Tick
-fromWholes qn = fromIntegral $ numerator qn * defaultPpq * 4 `div` denominator qn
-
--- | Print ppq and tempo for debugging             
-printTempo h queue =
-        let xtPrint lbl unit = putStrLn .   (lbl ++) . (++ " [" ++ unit ++ "]") . show
-            tPrint lbl units = (\x->printf "%-8s=%7d [%s]\n" lbl x units) 
-        in do
-            qt <- Tempo.get h queue
-            Tempo.getPPQ qt   >>= tPrint "PPQ" "ppq"
-            Tempo.getTempo qt >>= tPrint "tempo" "µsec/beat"
-
 
 -- * Example song
 
