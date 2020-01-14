@@ -182,8 +182,8 @@ between 0 and 15. The documentation says about |Channel|:
 But luckily, we don't have to dig into the parser packages or import
 one of them, because |Channel| offers these functions:
 
-\perform{:cmd resp ":t Ch.fromChannel"}
-\perform{:cmd resp ":t Ch.toChannel"}      
+\perform{:cmd verb' ":t Ch.fromChannel"}
+\perform{:cmd verb' ":t Ch.toChannel"}      
 
 \head{Ch.Body}
                              
@@ -204,7 +204,7 @@ Since there is nothing to implement, because everything is already
 definded in the |midi| package, we will try to construct some track
 data here. We start at the "bottom" and construct some voice messages.
 
-\perform{:cmd resp ":t ChVoice.NoteOn"}
+\perform{:cmd verb' ":t ChVoice.NoteOn"}
 
 The constructors of |Pitch| and |Velocity| are not exported. Instead
 there are functions to create these values from |Int|s.
@@ -230,7 +230,7 @@ value we want to set it to. The value turns out to be just an
 |ChVoice.toController|, |Ctrl.fromInt| or one of the predefined
 controller names in |Ctrl|
       
-\perform{:cmd resp ":t ChVoice.Control"}
+\perform{:cmd verb' ":t ChVoice.Control"}
 \begin{code}
 controller1a, controller1b :: Int -> ChVoice.ControllerValue -> ChVoice.T
 controller1a ct cv = ChVoice.Control (ChVoice.toController ct) cv
