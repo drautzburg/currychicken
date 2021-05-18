@@ -6,9 +6,7 @@ export EMPTY_LHS
 # ------------------------------------------------------------
 # Verbosity
 # ------------------------------------------------------------
-from =  echo "  from: $?"
-why = printf "* Making: $@\n" ; $(from)
-
+why = printf "* texmakefile: $? -> $@\n" 
 
 # ------------------------------------------------------------
 # how to call LaTeX
@@ -16,52 +14,61 @@ why = printf "* Making: $@\n" ; $(from)
 pdfLatex = pdflatex -halt-on-error -interaction=errorstopmode 
 
 # handmade LaTeX call
-LatexCrude = $(pdfLatex) $(notdir $<)
+LatexCrude = $(pdfLatex) $(<F)
 
 # using latexmk to invoke texfot to invode pfdlatex
 texIgnore = Overful|Underfull|Font Warning|This.is|Collected|Package|Latexmk
-LatexMk = texfot --no-stderr --ignore "$(texIgnore)" --quiet latexmk -pdf -pdflatex=$(pdfLatex)  $(notdir $<)
+LatexMk = texfot --no-stderr --ignore "$(texIgnore)" --quiet latexmk -pdf -pdflatex=$(pdfLatex)  $(<F)
 
 Latex = $(LatexMk)
+hline = @echo "------------------------------------------------------------"
+indent = @printf "%-20s%s\n"
 
 # ------------------------------------------------------------
 # creating pdf files
 # ------------------------------------------------------------
 %.pdf: %.eps
-	$(why)
+	@$(why)
 	ps2pdf 	-sPAPERSIZE=a3 $?
 
 %.pdf: %.tex
-	$(why)
-	cd $(dir $@) ; $(Latex) 
+	@$(why)
+	cd $(@D) ; $(Latex) && touch $(@F)
+	@wmctrl -a $(notdir $@) || { echo No viewer running; }
 
 # ------------------------------------------------------------
 # creating image files via graphviz
 # ------------------------------------------------------------
 
 %.eps $(DOC)/%.eps: %.dot
-	$(why)
+	@$(why)
 	dot -T eps -l dfd.ps $? -o $@
 
 %.jpeg $(DOC)/%.jepg: %.dot
-	$(why)
+	@$(why)
 	dot -T jpeg -l dfd.ps $? -o $@
 
 
 # ------------------------------------------------------------
-# lhs2TeX
+# Plain Haskell using a2ps
+# ------------------------------------------------------------
+$(DOC)/%.ps %.ps: %.hs
+	@$(why)
+	a2ps   -g --prolog=color --columns=1 -R -o $@ funWithCurryHowardCorrespondence.hs 
+
+# ------------------------------------------------------------
+# Literate-Haskell using lhs2TeX
 # ------------------------------------------------------------
 
-
 $(DOC)/%.tex %.tex: %.lhs
-	$(why)
+	@$(why)
 	lhs2TeX --tt $? > $@
 
 # ------------------------------------------------------------
 # Haskell profiling
 # ------------------------------------------------------------
 %.heap: %.hs
-	$(why)
+	@$(why)
 #	ghc -O2 -prof -auto-all -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
 	ghc -O2 -prof -caf-all -fforce-recomp  -rtsopts -o $(?:.hs=) $?
 #	$(?:.hs=) +RTS -hc -p
@@ -70,7 +77,7 @@ $(DOC)/%.tex %.tex: %.lhs
 	okular $(?:.hs=.ps) 2>/dev/null &
 
 %.prof: %.hs
-	$(why)
+	@$(why)
 	ghc -O2 -prof -auto-all -caf-all -rtsopts -fforce-recomp $?
 	$(@:.prof=) +RTS -p -RTS
 
@@ -78,16 +85,46 @@ $(DOC)/%.tex %.tex: %.lhs
 # ------------------------------------------------------------
 # Cleanup
 # ------------------------------------------------------------
-texFiles = *.pdf *.dvi *.fdb_latexmk *.fls *.tex *.toc *.aux *.lof *.log
+texFiles = *.pdf *.dvi *.fdb_latexmk *.fls *.toc *.aux *.lof *.log
 ghcFiles = *.hi  *.o *.out *.prof heaptest* a.out  
 bakFiles = *~ xx*
 tmpFiles = $(texFiles) $(ghcFiles) $(bakFiles)
 
+clean: 
+	@rm -fv $(tmpFiles) $(addprefix $(DOC)/,$(tmpFiles)) $(TEXFILES)
+
 # ------------------------------------------------------------
 # Miscellaneous
 # ------------------------------------------------------------
-%.view: %.pdf
-	"C:/Program Files/SumatraPDF/sumatrapdf" $? &
+#%.view: %.pdf # open pdfviewer
+#	"C:/Program Files/SumatraPDF/sumatrapdf" $? &
+
+view: $(.DEFAULT_GOAL) # open pdf
+	@okular  $? 2>$(basename $?).okular-log &
+
+
+# Helper for printing targets with awk
+define awkTarget
+	if ($$0 !~ "^[#	:]" && $$0 !="") {			\
+			split($$0,A,":");				\
+			printf ("%20s%-24s:%s\n", "", A[1], A[2])	\
+	}
+endef
+
+# list targets
+list help:
+	$(hline)
+	$(indent) "Default goal:"  "$(strip $(.DEFAULT_GOAL))"
+	$(indent) "Makefile list:" "$(strip $(MAKEFILE_LIST))"
+	$(hline)
+	@echo "Implicit rules: " 
+#	$(MAKE) -pRrq -f $? : 2>/dev/null | awk -v RS= -F: '/^# Implicit Rules/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' #| sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
+	@$(MAKE) -pRrq -f makefile : 2>/dev/null  | awk '/^# Implicit Rules/,/^# Files/ {$(awkTarget)}'
+	@echo "Files: " 
+	@$(MAKE) -pRrq -f makefile : 2>/dev/null  | awk '/^# Files/,/^# Finished Make data base/ {$(awkTarget)}'
+
+	$(hline)
+
 
 
 # ------------------------------------------------------------
@@ -141,62 +178,179 @@ endef
 
 define EMPTY_LHS
 \\documentclass[a4paper]{article}
+% ==================== lhs2TeX setup ====================
 %include lhs2TeX.fmt
 %include greek.fmt
 %options ghci -fglasgow-exts
-\\usepackage{fancyvrb}
+
+% ==================== graphics ====================
+% include eps, png png and jpg via \\includegraphics
+\\usepackage{graphicx}
+
+% --- draw graphics right in the document
 \\usepackage{tikz}
+\\usepackage{pgf}
 \\usetikzlibrary{arrows,mindmap,backgrounds}
-\\usepackage{fancyhdr}
-\\usepackage{listing}
+\\usetikzlibrary{calc} 
+\\usetikzlibrary{decorations}
+\\usetikzlibrary{plotmarks}
+\\usetikzlibrary{arrows}
+\\usetikzlibrary{chains,fit,shapes}
+
+% ==================== Formatting ====================
+% --- CommonFormatting uses Verbatim (not verbatim) from fancyvrb
+\\usepackage{fancyvrb}
+
+% --- Common useful packages
 \\usepackage{needspace}
 \\usepackage{amsmath}
-\\usepackage{graphicx}
-\\usepackage{capt-of}
-\\usepackage{ragged2e}
-\\usepackage[parfill]{parskip}
-\\usepackage{ctable}
-\\usepackage{xcolor}
-\\usepackage{colortbl}	
-\\usepackage{pgf}
-\\usepackage[framemethod=tikz]{mdframed}
-\\newmdenv[frametitle=Example,skipabove=1em,backgroundcolor=gray!05,roundcorner=2pt]{run}
 
-% --------------
-% tikz
-% --------------
-%\\usepackage{tikz}
-%\\usetikzlibrary{calc} 
-%\\usetikzlibrary{decorations}
-%\\usetikzlibrary{plotmarks}
-%\\usetikzlibrary{arrows}
-%\\usetikzlibrary{chains,fit,shapes}
+% --- put vertical space between paragraphs
+\\usepackage[parfill]{parskip}
+
+% --- print 1st, 2nd, 2rd with correct superscript
+\\usepackage[super]{nth}
+
+% --- better versions of enumerate, itemize and description
+\\usepackage{enumitem}
+\\setlist[description]{leftmargin=3cm,style=sameline}
+
+% ---- hyperlinks
+\\usepackage{hyperref}
+\\hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
+
+
+% --- format source code
+%\\usepackage{listing}
+%\\usepackage{xcolor}
+
+% --- tables
+\\usepackage{ctable}
+%\\usepackage{capt-of}
+%\\usepackage{colortbl}
+
+% --- frames
+%\\usepackage[framemethod=tikz]{mdframed}
+
+% --- alingn
+% \\s= puts more space around euqls sign
+\\newcommand\\s[1]{\\quad{#1} \\quad}
+% ==================== page layout ====================
+
+% --- Put chapter names in header
+\\usepackage{fancyhdr}
+\\pagestyle{fancy}
+
+% --- hyphenation and justification
+\\usepackage{ragged2e}
+%\\setlength{\\RaggedRightRightskip}{1em} % agressive
+\\setlength{\\RaggedRightRightskip}{3em} % medium
+%\\setlength{\\RaggedRightRightskip}{5em} % relaxed
+% Put \\RaggedRight after \\begin{document}
+
+% --- start each section on a new page
+\\usepackage{titlesec}
+\\newcommand{\\sectionbreak}{\\needspace{24em}}
+
+% ==================== multi language and unicode ====================
+
+% --- Text companion fonts
+%\\usepackage{textcomp}
+
+% --- unicode
+% Searchable unicode characters:
+%       http://xahlee.info/comp/unicode_index.html
+% For LaTeX symbols, see
+%        https://oeis.org/wiki/List_of_LaTeX_mathematical_symbols
+
 
 \\usepackage[utf8]{inputenc}
 
-\\usepackage{hyperref}
+\\newcommand{\\myOperator}[2] {
+   \\DeclareUnicodeCharacter{#1}{\\ifmmode{\\small#2}\\else{\\boldmath\\small$#2$}\\fi}
+}
 
-\\hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
+% ⊕ = 2295
+\\myOperator{2295}{\\oplus}
+% ⊖ = 2296
+\\myOperator{2296}{\\ominus}
+% ⊗ = 2297
+\\myOperator{2297}{\\otimes}
+% ⊘ = 2298
+\\myOperator{2298}{\\oslash}
+% ⊙ = 2299
+\\myOperator{2299}{\\odot}
+% ∙ = 2219
+\\myOperator{2219}{\\bullet}
+
+
+% --- language and hyphenation
+\\usepackage[english]{babel}
+% Put \\selectlanguage{english} after \\begin{document} in
+% multil-language documents (rare)
+
+
+
+% ==================== environments ====================
+
+% --- a quote environement with a sans font
+\\newenvironment{sfquote}{\\begin{quote}\\sffamily}{\\end{quote}}
+
+% --- intermediate headers, not in TOC
+\\newcommand{\\head}[1]{\\needspace{4em}\\medskip\\textsf{\\textbf{#1}}\\par}
+
+% --- put something into a box titled "Example"
+%\\newmdenv[frametitle=Example,skipabove=1em,backgroundcolor=gray!05,roundcorner=2pt]{run}
+
+% ==================== end ====================
+
 \\author{Martin Drautzburg}
-\\title{xxx}
+\\title{How Infections Spread
+}
+\\begin{document} 
+\\RaggedRight
 
-\\begin{document} \\maketitle 
-
+\\maketitle
 \\begin{abstract}
+We present simple simulation about the spread of an infection. It
+computes the number of deaths and the spread of immunity over
+time. Using the simulation, We examine the effect of Social Distancing
+on the death toll.
+
+This paper contains the full source code of the simulation.
 \\end{abstract}
 
 
 \\tableofcontents 
 \\listoffigures
+\\listoftables
+
+To get the number of new infections, we must multiply with the number
+of susceptibles $S$.
+\\begin{align}
+  dI & \\s=   S \\cdot \\left[1 - (1 - R_c)^{C \\frac{I}{P}}\\right] \\nonumber\\\\
+     & \\s=   S \\cdot \\left[1 - e^{C \\frac{I}{P} ln(1 - R_c)}\\right] \\label{equB}
+\\end{align}
 
 
-\\hypersetup{colorlinks=true, linkcolor=blue, pdftoolbar=true}
-%\\begin{figure}[htb!]
-%\\centering
-%\\includegraphics[width=4cm]{glass-slipper.jpg}
-%\\end{figure}
-\\end{document}
+\\begin{figure}[htb!]
+  \\centering
+  \\begin{tikzpicture}[domain=0:100, scale=1, x=1cm, y=1cm,font=\\sffamily\\small]
 
+    \\begin{scope}[very thin,color=gray]
+      \\draw[xstep=1cm, ystep=0.5cm] (0,-1) grid (6.5,1);
+      \\foreach \\x in {1,2,3,4,5,6}
+      \\draw(\\x,-1) -- (\\x,-1.1) node[below] {$\\x$};
+      \\foreach \\y in {-1,-0.5,0,0.5,1}
+      \\draw(-0,\\y) -- (-0.1,\\y) node[left] {$\\y$};
+    \\end{scope}
+    \\perform{draw "orange, thick" exSin}
+    \\perform{draw "blue, thick" exCos}
+
+
+  \\end{tikzpicture}
+  \\caption{Example output of plot}
+\\end{figure}
 endef
 
 
